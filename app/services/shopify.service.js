@@ -3,11 +3,6 @@ export async function getCustomerStats(admin, customerId) {
     query getCustomer($id: ID!) {
       customer(id: $id) {
         numberOfOrders
-        orders(first: 50) {
-          nodes {
-            fulfillmentStatus
-          }
-        }
       }
     }
   `, {
@@ -17,14 +12,8 @@ export async function getCustomerStats(admin, customerId) {
   });
 
   const data = await response.json();
-
-  const orders = data.data.customer.orders.nodes;
-
-  const fulfilledOrders =
-    orders.filter(o => o.fulfillmentStatus === "FULFILLED").length;
-
   return {
-    totalOrders: data.data.customer.numberOfOrders,
-    fulfilledOrders,
+    totalOrders: data.data.customer?.numberOfOrders || 0,
+    fulfilledOrders: 0, // temporarily set to 0
   };
 }
