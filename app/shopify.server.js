@@ -16,6 +16,54 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
+  // Add webhook configuration here
+  webhooks: {
+    // Order webhooks
+    ORDERS_CREATE: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/orders/create",
+    },
+    ORDERS_UPDATED: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/orders/update",
+    },
+    ORDERS_PAID: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/orders/paid",
+    },
+    ORDERS_CANCELLED: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/orders/cancelled",
+    },
+    ORDERS_FULFILLED: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/orders/fulfilled",
+    },
+    // App uninstall webhook
+    APP_UNINSTALLED: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/app/uninstalled",
+    },
+    // Customer webhooks
+    CUSTOMERS_CREATE: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/customers/create",
+    },
+    CUSTOMERS_UPDATE: {
+      deliveryMethod: "http",
+      callbackUrl: "/webhooks/customers/update",
+    },
+  },
+  
+  // Register webhooks after installation
+  hooks: {
+    afterAuth: async ({ session, admin, registerWebhooks }) => {
+      // This will automatically register webhooks after app install
+      await registerWebhooks({ session });
+      console.log(`Webhooks registered for shop: ${session.shop}`);
+    },
+  },
+  
   future: {
     expiringOfflineAccessTokens: true,
   },

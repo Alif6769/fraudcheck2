@@ -14,10 +14,10 @@ datasource db {
 }
 
 model Session {
-  id            String    @id
+  id            String   @id
   shop          String
   state         String
-  isOnline      Boolean   @default(false)
+  isOnline      Boolean  @default(false)
   scope         String?
   expires       DateTime?
   accessToken   String
@@ -25,10 +25,50 @@ model Session {
   firstName     String?
   lastName      String?
   email         String?
-  accountOwner  Boolean   @default(false)
+  accountOwner  Boolean  @default(false)
   locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  collaborator  Boolean? @default(false)
+  emailVerified Boolean? @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
+}
+
+model Order {
+  id                       Int      @id @default(autoincrement())
+  shop                     String
+  orderId                  String
+  orderNumber              Int
+  name                     String?
+  totalPrice               Float
+  subtotalPrice            Float?
+  totalTax                 Float?
+  currency                 String?
+  financialStatus          String?
+  fulfillmentStatus        String?
+  cancelReason             String?
+
+  customerEmail            String?
+  customerFirstName        String?
+  customerLastName         String?
+  customerId               String?
+
+  shippingPhone            String?
+  customerFullName         String?
+  shippingAddress          String?
+  billingAddress           String?
+
+  customerTotalOrders      Int?
+  customerFulfilledOrders  Int?
+
+  lineItems                String?
+  discountCodes            String?
+  shippingLines            String?
+
+  orderDate                DateTime
+  updatedAt                DateTime
+  processedAt              DateTime?
+
+  rawData                  String?
+
+  @@unique([orderId, shop])
 }
