@@ -60,8 +60,8 @@ export const action = async ({ request }) => {
       // shippingAddress,
 
       // 👇 Add customer stats safely
-      customerTotalOrders: customerStats?.totalOrders || 0,
-      customerFulfilledOrders: customerStats?.fulfilledOrders || 0,
+      customerTotalOrders: parseInt(customerStats?.totalOrders) || 0,
+      customerFulfilledOrders: Number(customerStats?.fulfilledOrders) || 0,
       
       // Line items (products)
       lineItems: JSON.stringify(payload.line_items || []),
