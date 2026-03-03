@@ -56,10 +56,10 @@ const shopify = shopifyApp({
   },
   
   hooks: {
-    afterAuth: async ({ session, admin, registerWebhooks }) => {
+    afterAuth: async ({ session, admin }) => {
       console.log("✅ afterAuth hook started for", session.shop);
       try {
-        await registerWebhooks({ session });
+        await shopify.registerWebhooks({ session, admin });
         console.log(`✅ Webhooks registered for shop: ${session.shop}`);
       } catch (error) {
         console.error("❌ Webhook registration failed:", error);
