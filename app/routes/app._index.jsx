@@ -331,21 +331,11 @@
 // };
 // import { useLoaderData } from "react-router";
 
-import { useState, useEffect } from "react";
+// app/routes/app._index.jsx
+import { useLoaderData } from "react-router";
 
 export default function Index() {
-  const [orders, setOrders] = useState([]);
-  const [shop, setShop] = useState("");
-
-  useEffect(() => {
-    fetch("/api/orders") // fetch from server-only API route
-      .then((res) => res.json())
-      .then((data) => {
-        setOrders(data.orders || []);
-        setShop(data.shop || "");
-      })
-      .catch((err) => console.error("Error fetching orders:", err));
-  }, []);
+  const { orders = [], shop = "" } = useLoaderData() || {};
 
   return (
     <s-page heading="Orders Dashboard">
@@ -366,44 +356,22 @@ export default function Index() {
           >
             <thead>
               <tr style={{ background: "#f4f6f8" }}>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Order #
-                </th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Customer
-                </th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Email
-                </th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Total
-                </th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Status
-                </th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>
-                  Date
-                </th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Order #</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Customer</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Email</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Total</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Status</th>
+                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Date</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order) => (
                 <tr key={order.id}>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {order.orderNumber}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {order.customerFullName}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {order.customerEmail}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {order.totalPrice} {order.currency}
-                  </td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {order.financialStatus}
-                  </td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.orderNumber}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.customerFullName}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.customerEmail}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.totalPrice} {order.currency}</td>
+                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.financialStatus}</td>
                   <td style={{ padding: "8px", border: "1px solid #ddd" }}>
                     {new Date(order.orderDate).toLocaleDateString()}
                   </td>
@@ -416,3 +384,8 @@ export default function Index() {
     </s-page>
   );
 }
+
+// Optional headers for Shopify SSR caching
+export const headers = (headersArgs) => {
+  return {};
+};
