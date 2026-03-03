@@ -332,6 +332,14 @@
 // import { useLoaderData } from "react-router";
 
 // app/routes/app._index.jsx
+
+import { authenticate } from "../shopify.server";
+
+export const loader = async ({ request }) => {
+  const { session } = await authenticate.admin(request);
+  return { shop: session.shop };
+};
+
 import { useLoaderData } from "react-router";
 
 export default function Index() {

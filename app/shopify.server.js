@@ -58,9 +58,9 @@ const shopify = shopifyApp({
   // Register webhooks after installation
   hooks: {
     afterAuth: async ({ session, admin, registerWebhooks }) => {
-      // This will automatically register webhooks after app install
+      console.log("✅ afterAuth hook started for", session.shop);
       await registerWebhooks({ session });
-      console.log(`Webhooks registered for shop: ${session.shop}`);
+      console.log(`✅ Webhooks registered for shop: ${session.shop}`);
     },
   },
   
