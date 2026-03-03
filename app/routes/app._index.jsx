@@ -331,10 +331,6 @@
 // };
 
 
-import { useLoaderData } from "react-router";
-
-app/routes/app._index.jsx
-
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
