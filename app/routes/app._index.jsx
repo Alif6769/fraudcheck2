@@ -329,10 +329,10 @@
 // export const headers = (headersArgs) => {
 //   return boundary.headers(headersArgs);
 // };
+// import { useLoaderData } from "react-router";
 
-
-import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { json } from "react-router";
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import { prisma } from "../db.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
