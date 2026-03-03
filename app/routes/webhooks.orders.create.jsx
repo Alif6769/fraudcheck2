@@ -1,6 +1,6 @@
 // app/routes/webhooks.orders.create.jsx
 import { authenticate } from "../shopify.server";
-import { prisma } from "../db.server";
+import prisma from "../db.server";
 
 // imports for different services
 import { getCustomerStats } from "../services/shopify.service";
