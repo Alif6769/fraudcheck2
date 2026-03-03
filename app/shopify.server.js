@@ -55,12 +55,23 @@ const shopify = shopifyApp({
     },
   },
   
+  // hooks: {
+  //   afterAuth: async ({ session, admin }) => {
+  //     console.log("✅ afterAuth hook started for", session.shop);
+  //     try {
+  //       await shopify.registerWebhooks({ session, admin });
+  //       console.log(`✅ Webhooks registered for shop: ${session.shop}`);
+  //     } catch (error) {
+  //       console.error("❌ Webhook registration failed:", error);
+  //     }
+  //   },
+  // },
   hooks: {
     afterAuth: async ({ session, admin }) => {
       console.log("✅ afterAuth hook started for", session.shop);
       try {
-        await shopify.registerWebhooks({ session, admin });
-        console.log(`✅ Webhooks registered for shop: ${session.shop}`);
+        const results = await shopify.registerWebhooks({ session, admin });
+        console.log("📋 Webhook registration results:", JSON.stringify(results, null, 2));
       } catch (error) {
         console.error("❌ Webhook registration failed:", error);
       }
