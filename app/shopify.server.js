@@ -6,6 +6,7 @@ import {
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
+import { DeliveryMethod } from "@shopify/shopify-app-react-router/server";
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -20,46 +21,46 @@ const shopify = shopifyApp({
   webhooks: {
     // Order webhooks
     ORDERS_CREATE: {
-      deliveryMethod: "http",
+      deliveryMethod: DeliveryMethod.Http,
       callbackUrl: "/webhooks/orders/create",
     },
-    ORDERS_UPDATED: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/orders/update",
-    },
-    ORDERS_PAID: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/orders/paid",
-    },
-    ORDERS_CANCELLED: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/orders/cancelled",
-    },
-    ORDERS_FULFILLED: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/orders/fulfilled",
-    },
-    // App uninstall webhook
-    APP_UNINSTALLED: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/app/uninstalled",
-    },
-    // Customer webhooks
-    CUSTOMERS_CREATE: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/customers/create",
-    },
-    CUSTOMERS_UPDATE: {
-      deliveryMethod: "http",
-      callbackUrl: "/webhooks/customers/update",
-    },
+    // ORDERS_UPDATED: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/orders/update",
+    // },
+    // ORDERS_PAID: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/orders/paid",
+    // },
+    // ORDERS_CANCELLED: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/orders/cancelled",
+    // },
+    // ORDERS_FULFILLED: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/orders/fulfilled",
+    // },
+    // // App uninstall webhook
+    // APP_UNINSTALLED: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/app/uninstalled",
+    // },
+    // // Customer webhooks
+    // CUSTOMERS_CREATE: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/customers/create",
+    // },
+    // CUSTOMERS_UPDATE: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/customers/update",
+    // },
   },
   
   hooks: {
     afterAuth: async ({ session, admin }) => {
       console.log("✅ afterAuth hook started for", session.shop);
       try {
-        await shopify.registerWebhooks({ session, admin });
+        await shopify.registerWebhooks({ session });
         console.log(`✅ Webhooks registered for shop: ${session.shop}`);
       } catch (error) {
         console.error("❌ Webhook registration failed:", error);
