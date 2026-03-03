@@ -336,8 +336,14 @@
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
-  return { shop: session.shop };
+  try {
+    const { session } = await authenticate.admin(request);
+    // Optionally fetch orders from your database here if needed
+    return json({ shop: session.shop });
+  } catch (error) {
+    console.error("❌ Loader error:", error);
+    throw new Response(error.message || "Authentication failed", { status: 500 });
+  }
 };
 
 import { useLoaderData } from "react-router";
