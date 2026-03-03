@@ -349,8 +349,6 @@ export const loader = async ({ request }) => {
   }
 };
 
-import { useLoaderData } from "react-router";
-
 export default function Index() {
   const { orders = [], shop = "" } = useLoaderData() || {};
 
