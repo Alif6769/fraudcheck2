@@ -332,42 +332,19 @@
 // import { useLoaderData } from "react-router";
 
 import { useState, useEffect } from "react";
-import { authenticate } from "../shopify.server";
-import prisma from "../db.server"; // can still use prisma in API route
-import { boundary } from "@shopify/shopify-app-react-router/server";
 
-// Step 1: Create an API route (if not already done) to get orders
-// File: app/routes/api/orders.js
-export async function getOrders(req, res) {
-  try {
-    const { session } = await authenticate.admin(req);
-
-    const orders = await prisma.order.findMany({
-      where: { shop: session.shop },
-      orderBy: { orderDate: "desc" },
-    });
-
-    res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ orders, shop: session.shop }));
-  } catch (err) {
-    res.statusCode = 500;
-    res.end(JSON.stringify({ error: err.message }));
-  }
-}
-
-// Step 2: In your component, fetch orders from that API
 export default function Index() {
   const [orders, setOrders] = useState([]);
   const [shop, setShop] = useState("");
 
   useEffect(() => {
-    fetch("/api/orders") // call your new API route
+    fetch("/api/orders") // fetch from server-only API route
       .then((res) => res.json())
       .then((data) => {
         setOrders(data.orders || []);
         setShop(data.shop || "");
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error("Error fetching orders:", err));
   }, []);
 
   return (
@@ -439,7 +416,3 @@ export default function Index() {
     </s-page>
   );
 }
-
-export const headers = (headersArgs) => {
-  return boundary.headers(headersArgs);
-};
