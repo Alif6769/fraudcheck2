@@ -334,7 +334,7 @@
 import { json } from "react-router";
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { prisma } from "../db.server";
+import prisma from "../db.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 export const loader = async ({ request }) => {
