@@ -22,7 +22,7 @@ const shopify = shopifyApp({
     // Order webhooks
     ORDERS_CREATE: {
       deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "https://fraudcheck2-production.up.railway.app/webhooks/orders/create",
+      callbackUrl: "/webhooks/orders/create",
     },
     // ORDERS_UPDATED: {
     //   deliveryMethod: DeliveryMethod.Http,
