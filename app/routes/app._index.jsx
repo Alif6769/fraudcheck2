@@ -332,18 +332,20 @@
 
 
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server"; // Add this import
+import { useLoaderData } from "react-router";
 
 export const loader = async ({ request }) => {
   try {
-    await authenticate.admin(request);
-    return null;
-  } catch (error) {
-    console.error("❌ Loader authentication error:", {
-      message: error.message,
-      stack: error.stack,
-      status: error.status,
+    const { session } = await authenticate.admin(request);
+    const orders = await prisma.order.findMany({
+      where: { shop: session.shop },
+      orderBy: { orderDate: "desc" },
     });
-    throw error; // rethrow to keep 500
+    return { orders, shop: session.shop };
+  } catch (error) {
+    console.error("❌ Loader error:", error);
+    throw new Response(error.message, { status: 500 });
   }
 };
 
