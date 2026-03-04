@@ -136,7 +136,7 @@ function getRiskIndicator(fraudReport, shippingAddress) {
   if (ratio === null) return ""; // couldn't parse – treat as unknown
 
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
-  const isLow = ratio < 90;
+  const isLow = ratio < 90 || (ratio > 100 && ratio < 9000);
 
   if (isOutside && isLow) {
     return "🔴🔴"; // double red for outside + low ratio
