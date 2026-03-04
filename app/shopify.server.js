@@ -108,7 +108,9 @@ export async function syncOrders(session, admin) {
               id
               firstName
               lastName
-              phone
+              defaultPhoneNumber {
+                phoneNumber
+              }
             }
             shippingAddress {
               address1
@@ -119,7 +121,7 @@ export async function syncOrders(session, admin) {
             shippingLines(first: 10) {
               edges {
                 node {
-                  priceSet {
+                  originalPriceSet {
                     shopMoney {
                       amount
                     }
@@ -154,12 +156,14 @@ export async function syncOrders(session, admin) {
       customerId: node.customer?.id || null,
       firstName: node.customer?.firstName || null,
       lastName: node.customer?.lastName || null,
-      contactPhone: node.customer?.phone || null,
+      contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber || null,
       shippingPhone: node.shippingAddress?.phone || null,
       shippingAddress: node.shippingAddress?.address1 || null,
-      // Convert to string to match schema
-      totalPrice: String(node.totalPriceSet?.shopMoney?.amount || "0"),
-      shippingFee: String(node.shippingLines?.edges?.[0]?.node?.priceSet?.shopMoney?.amount || "0"),
+      totalPrice: String(node.totalPriceSet?.shopMoney?.amount ?? "0"),
+      shippingFee: String(
+        node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ??
+          "0",
+      ),
       products: (node.lineItems?.edges || []).map((item) => ({
         title: item.node.title,
         quantity: item.node.quantity,
@@ -169,7 +173,7 @@ export async function syncOrders(session, admin) {
 
     for (const order of cleanedOrders) {
       await prisma.order.upsert({
-        where: { orderId: order.orderId }, // ✅ Use the unique field
+        where: { orderId: order.orderId },
         update: order,
         create: order,
       });
