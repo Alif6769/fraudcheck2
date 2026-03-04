@@ -199,7 +199,7 @@ export default function Index() {
 
               <tbody>
                 {orders.map((order) => (
-                  <tr key={order.id}>
+                  <tr key={order.orderName}>
                     <td style={tdStyle}>
                       {order.orderName || "-"}
                     </td>
