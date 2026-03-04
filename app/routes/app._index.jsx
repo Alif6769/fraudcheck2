@@ -170,21 +170,14 @@ export default function Index() {
         {orders.length === 0 ? (
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
-          <div style={{ overflowX: "auto", marginTop: "20px" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "14px",
-                tableLayout: "fixed", // ← forces column widths
-              }}
-            >
+          <div style={{ overflow: "auto", maxHeight: "70vh", marginTop: "20px" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: "120px" }}>Order Name</th>
-                  <th style={{ ...thStyle, width: "160px" }}>Order Time</th>
+                  <th style={{ ...thStyle, width: "60px" }}>Order Name</th>
+                  <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
-                  <th style={{ ...thStyle, width: "600px" }}>FraudSpy Report</th> {/* doubled width */}
+                  <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th> {/* doubled width */}
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
