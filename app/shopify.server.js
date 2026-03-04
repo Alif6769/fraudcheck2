@@ -98,6 +98,7 @@ export async function syncOrders(session, admin) {
         edges {
           node {
             id
+            name
             createdAt
             totalPriceSet {
               shopMoney {
@@ -152,6 +153,7 @@ export async function syncOrders(session, admin) {
 
     const cleanedOrders = orders.map(({ node }) => ({
       orderId: node.id,
+      orderName: node.name,
       orderTime: node.createdAt,
       customerId: node.customer?.id || null,
       firstName: node.customer?.firstName || null,
