@@ -116,6 +116,37 @@ const tdStyle = {
   verticalAlign: "top",
 };
 
+/**
+ * Extracts success ratio from fraud report text.
+ * Returns a number (0-100) or null if not found.
+ */
+function extractSuccessRatio(report) {
+  if (!report) return null;
+  const match = report.match(/Success ratio:\s*([0-9.]+)%/);
+  return match ? parseFloat(match[1]) : null;
+}
+
+/**
+ * Returns emoji indicator based on fraud report and shipping location.
+ */
+function getRiskIndicator(fraudReport, shippingAddress) {
+  if (!fraudReport) return ""; // no report – empty cell
+
+  const ratio = extractSuccessRatio(fraudReport);
+  if (ratio === null) return ""; // couldn't parse – treat as unknown
+
+  const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
+  const isLow = ratio < 90;
+
+  if (isOutside && isLow) {
+    return "🔴🔴"; // double red for outside + low ratio
+  } else if (isLow) {
+    return "🔴"; // red for low ratio
+  } else {
+    return "🟢"; // green for good ratio
+  }
+}
+
 /* =========================
    COMPONENT
 ========================= */
@@ -132,9 +163,8 @@ export default function Index() {
 
   return (
     <s-page heading="Orders Dashboard">
-      <s-section>
-
-        {/* Sync Button (unchanged) */}
+      <s-section style={{ width: "100%", padding: 0 }}>
+        {/* Sync Button and messages – unchanged */}
         <button
           onClick={() => fetcher.submit({}, { method: "post" })}
           disabled={fetcher.state === "submitting"}
@@ -151,7 +181,6 @@ export default function Index() {
           {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
         </button>
 
-        {/* Success/Error messages (unchanged) */}
         {fetcher.data?.success && (
           <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
             ✅ {fetcher.data.synced} orders synced successfully
@@ -170,14 +199,22 @@ export default function Index() {
         {orders.length === 0 ? (
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
-          <div style={{ overflow: "auto", maxHeight: "70vh", marginTop: "20px" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
+          <div style={{ overflow: "auto", maxHeight: "90vh", marginTop: "10px", width: "100%" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "14px",
+                tableLayout: "fixed",
+              }}
+            >
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: "60px" }}>Order Name</th>
+                  <th style={{ ...thStyle, width: "50px" }}>Risk</th> {/* new column */}
+                  <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
-                  <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th> {/* doubled width */}
+                  <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
@@ -185,22 +222,26 @@ export default function Index() {
                   <th style={{ ...thStyle, width: "200px" }}>Products</th>
                 </tr>
               </thead>
-
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
+                    {/* Risk Indicator */}
+                    <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
+                      {getRiskIndicator(order.fraudReport, order.shippingAddress)}
+                    </td>
+
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>
                       {formatCustomerName(order.firstName, order.lastName)}
                     </td>
 
-                    {/* Fraud Report Cell - now 600px wide */}
+                    {/* Fraud Report Cell */}
                     <td style={tdStyle}>
                       {order.fraudReport ? (
                         <div
                           style={{
-                            maxWidth: "100%",            // fill the 600px cell
+                            maxWidth: "100%",
                             maxHeight: "150px",
                             overflow: "auto",
                             whiteSpace: "pre-wrap",
@@ -241,7 +282,6 @@ export default function Index() {
             </table>
           </div>
         )}
-
       </s-section>
     </s-page>
   );

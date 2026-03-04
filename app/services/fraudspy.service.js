@@ -81,7 +81,7 @@ function buildReportText(data) {
     const total = Number(o.total || 0);
     const delivered = Number(o.delivered || 0);
     const returned = Number(o.returned || 0);
-    const successRatio = (Number(o.success_ratio || 0) * 100).toFixed(2) + '%';
+    const successRatio = (Number(o.success_ratio || 0)).toFixed(2) + '%';
     lines.push('OVERALL:');
     lines.push(` • Total: ${total}`);
     lines.push(` • Delivered: ${delivered}`);
