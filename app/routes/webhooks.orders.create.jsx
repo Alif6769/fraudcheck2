@@ -74,7 +74,7 @@ export const action = async ({ request }) => {
     // Only fetch fraud report if source is "web" and we have a shipping phone
     if (source === 'web' && shippingPhone) {
       try {
-        const { fetchFraudReport } = await import('../services/fraudspy.service');
+        const { fetchFraudReport } = await import('./services/fraudspy.service');
         const report = await fetchFraudReport(shippingPhone);
         // Update the order with the report
         await prisma.order.update({

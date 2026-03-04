@@ -189,7 +189,7 @@ export async function syncOrders(session, admin) {
       const dbOrder = await prisma.order.findUnique({ where: { orderId: order.orderId } });
       if (dbOrder && dbOrder.source === 'web' && !dbOrder.fraudReport && order.shippingPhone) {
         try {
-          const { fetchFraudReport } = await import('../services/fraudspy.service');
+          const { fetchFraudReport } = await import('./services/fraudspy.service');
           const report = await fetchFraudReport(order.shippingPhone);
           await prisma.order.update({
             where: { orderId: order.orderId },

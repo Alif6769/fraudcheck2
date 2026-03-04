@@ -34,7 +34,7 @@ export const action = async ({ request }) => {
     for (const order of recentOrders) {
       if (order.shippingPhone) {
         try {
-          const { fetchFraudReport } = await import('../services/fraudspy.service');
+          const { fetchFraudReport } = await import('./services/fraudspy.service');
           const report = await fetchFraudReport(order.shippingPhone);
           await prisma.order.update({
             where: { orderId: order.orderId },
