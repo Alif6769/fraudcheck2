@@ -119,7 +119,7 @@ export async function syncOrders(session, admin) {
             shippingLines(first: 10) {
               edges {
                 node {
-                  priceSet {          // ✅ Use priceSet instead of price
+                  priceSet {
                     shopMoney {
                       amount
                     }
@@ -157,8 +157,9 @@ export async function syncOrders(session, admin) {
       contactPhone: node.customer?.phone || null,
       shippingPhone: node.shippingAddress?.phone || null,
       shippingAddress: node.shippingAddress?.address1 || null,
-      totalPrice: node.totalPriceSet?.shopMoney?.amount || 0,
-      shippingFee: node.shippingLines?.edges?.[0]?.node?.priceSet?.shopMoney?.amount || 0,
+      // Convert to string to match schema
+      totalPrice: String(node.totalPriceSet?.shopMoney?.amount || "0"),
+      shippingFee: String(node.shippingLines?.edges?.[0]?.node?.priceSet?.shopMoney?.amount || "0"),
       products: (node.lineItems?.edges || []).map((item) => ({
         title: item.node.title,
         quantity: item.node.quantity,
@@ -168,12 +169,7 @@ export async function syncOrders(session, admin) {
 
     for (const order of cleanedOrders) {
       await prisma.order.upsert({
-        where: {
-          orderId_shop: {          // ✅ Use the composite key
-            orderId: order.orderId,
-            shop: order.shop,
-          },
-        },
+        where: { orderId: order.orderId }, // ✅ Use the unique field
         update: order,
         create: order,
       });
@@ -183,7 +179,7 @@ export async function syncOrders(session, admin) {
     return cleanedOrders.length;
   } catch (error) {
     console.error(`❌ Sync failed for ${session.shop}:`, error);
-    throw error; // rethrow if you want the calling route to handle it
+    throw error;
   }
 }
 
