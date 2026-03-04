@@ -331,12 +331,39 @@
 // };
 
 
-import { authenticate } from "../shopify.server";
+import { json } from "react-router";
+import {
+  useLoaderData,
+  useFetcher,
+  useRevalidator,
+} from "react-router";
+import { useEffect } from "react";
+
+import { authenticate, syncOrders } from "../shopify.server";
 import prisma from "../db.server";
-import { useLoaderData } from "react-router";
 
 /* =========================
-   LOADER
+   ACTION (Sync Orders)
+========================= */
+
+export const action = async ({ request }) => {
+  try {
+    const { session, admin } = await authenticate.admin(request);
+
+    const count = await syncOrders(session, admin);
+
+    return json({ success: true, synced: count });
+  } catch (error) {
+    console.error("❌ Sync orders failed:", error);
+    return json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+};
+
+/* =========================
+   LOADER (Load Orders)
 ========================= */
 
 export const loader = async ({ request }) => {
@@ -345,7 +372,7 @@ export const loader = async ({ request }) => {
 
     const orders = await prisma.order.findMany({
       where: { shop: session.shop },
-      orderBy: { orderTime: "desc" }, // ✅ newest first
+      orderBy: { orderTime: "desc" },
     });
 
     return { orders, shop: session.shop };
@@ -356,39 +383,95 @@ export const loader = async ({ request }) => {
 };
 
 /* =========================
+   HELPERS
+========================= */
+
+function formatDate(date) {
+  if (!date) return "-";
+  return new Date(date).toLocaleString();
+}
+
+function formatCustomerName(first, last) {
+  return [first, last].filter(Boolean).join(" ") || "-";
+}
+
+const thStyle = {
+  borderBottom: "1px solid #ddd",
+  padding: "8px",
+  textAlign: "left",
+  background: "#f4f6f8",
+};
+
+const tdStyle = {
+  borderBottom: "1px solid #eee",
+  padding: "8px",
+};
+
+/* =========================
    COMPONENT
 ========================= */
 
 export default function Index() {
   const { orders = [], shop = "" } = useLoaderData() || {};
+  const fetcher = useFetcher();
+  const revalidator = useRevalidator();
 
-  const thStyle = {
-    padding: "10px",
-    border: "1px solid #ddd",
-    fontWeight: "bold",
-    backgroundColor: "#f4f6f8",
-    textAlign: "left",
-  };
-
-  const tdStyle = {
-    padding: "10px",
-    border: "1px solid #ddd",
-    verticalAlign: "top",
-  };
-
-  const formatDate = (date) => {
-    if (!date) return "-";
-    return new Date(date).toLocaleString();
-  };
-
-  const formatCustomerName = (first, last) => {
-    const fullName = `${first ?? ""} ${last ?? ""}`.trim();
-    return fullName || "Guest";
-  };
+  // ✅ Auto refresh table after successful sync
+  useEffect(() => {
+    if (fetcher.data?.success) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.data]);
 
   return (
     <s-page heading="Orders Dashboard">
       <s-section>
+
+        {/* Sync Button */}
+        <button
+          onClick={() => fetcher.submit({}, { method: "post" })}
+          disabled={fetcher.state === "submitting"}
+          style={{
+            padding: "8px 16px",
+            marginBottom: "15px",
+            cursor: "pointer",
+            background: "#008060",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+          }}
+        >
+          {fetcher.state === "submitting"
+            ? "Syncing..."
+            : "Sync Orders"}
+        </button>
+
+        {/* Success Message */}
+        {fetcher.data?.success && (
+          <div
+            style={{
+              marginBottom: "10px",
+              color: "green",
+              fontWeight: "500",
+            }}
+          >
+            ✅ {fetcher.data.synced} orders synced successfully
+          </div>
+        )}
+
+        {/* Error Message */}
+        {fetcher.data?.error && (
+          <div
+            style={{
+              marginBottom: "10px",
+              color: "red",
+              fontWeight: "500",
+            }}
+          >
+            ❌ {fetcher.data.error}
+          </div>
+        )}
+
         <s-paragraph>
           Showing orders for: <strong>{shop}</strong>
         </s-paragraph>
@@ -420,42 +503,37 @@ export default function Index() {
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
-                    {/* Order ID */}
                     <td style={tdStyle}>
                       {order.orderId || "-"}
                     </td>
 
-                    {/* Order Time */}
                     <td style={tdStyle}>
                       {formatDate(order.orderTime)}
                     </td>
 
-                    {/* Customer Name */}
                     <td style={tdStyle}>
-                      {formatCustomerName(order.firstName, order.lastName)}
+                      {formatCustomerName(
+                        order.firstName,
+                        order.lastName
+                      )}
                     </td>
 
-                    {/* Shipping Phone */}
                     <td style={tdStyle}>
                       {order.shippingPhone || "-"}
                     </td>
 
-                    {/* Shipping Address */}
                     <td style={tdStyle}>
                       {order.shippingAddress || "-"}
                     </td>
 
-                    {/* Total Price */}
                     <td style={tdStyle}>
                       {order.totalPrice || "0"}
                     </td>
 
-                    {/* Shipping Fee */}
                     <td style={tdStyle}>
                       {order.shippingFee || "0"}
                     </td>
 
-                    {/* Products */}
                     <td style={tdStyle}>
                       {Array.isArray(order.products) &&
                       order.products.length > 0 ? (
@@ -475,13 +553,14 @@ export default function Index() {
             </table>
           </div>
         )}
+
       </s-section>
     </s-page>
   );
 }
 
 /* =========================
-   HEADERS (Optional)
+   HEADERS
 ========================= */
 
 export const headers = () => {
