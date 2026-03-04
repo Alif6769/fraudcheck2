@@ -134,7 +134,7 @@ export default function Index() {
     <s-page heading="Orders Dashboard">
       <s-section>
 
-        {/* Sync Button */}
+        {/* Sync Button (unchanged) */}
         <button
           onClick={() => fetcher.submit({}, { method: "post" })}
           disabled={fetcher.state === "submitting"}
@@ -151,14 +151,12 @@ export default function Index() {
           {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
         </button>
 
-        {/* Success Message */}
+        {/* Success/Error messages (unchanged) */}
         {fetcher.data?.success && (
           <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
             ✅ {fetcher.data.synced} orders synced successfully
           </div>
         )}
-
-        {/* Error Message */}
         {fetcher.data?.error && (
           <div style={{ marginBottom: "10px", color: "red", fontWeight: "500" }}>
             ❌ {fetcher.data.error}
@@ -178,37 +176,38 @@ export default function Index() {
                 width: "100%",
                 borderCollapse: "collapse",
                 fontSize: "14px",
+                tableLayout: "fixed", // ← forces column widths
               }}
             >
               <thead>
                 <tr>
-                  <th style={thStyle}>Order Name</th>
-                  <th style={thStyle}>Order Time</th>
-                  <th style={thStyle}>Customer Name</th>
-                  <th style={thStyle}>FraudSpy Report</th>
-                  <th style={thStyle}>Shipping Phone</th>
-                  <th style={thStyle}>Shipping Address</th>
-                  <th style={thStyle}>Total Price</th>
-                  <th style={thStyle}>Shipping Fee</th>
-                  <th style={thStyle}>Products</th>
+                  <th style={{ ...thStyle, width: "120px" }}>Order Name</th>
+                  <th style={{ ...thStyle, width: "160px" }}>Order Time</th>
+                  <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
+                  <th style={{ ...thStyle, width: "600px" }}>FraudSpy Report</th> {/* doubled width */}
+                  <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
+                  <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
+                  <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
+                  <th style={{ ...thStyle, width: "90px" }}>Shipping Fee</th>
+                  <th style={{ ...thStyle, width: "200px" }}>Products</th>
                 </tr>
               </thead>
 
               <tbody>
                 {orders.map((order) => (
-                  <tr key={order.id}> {/* Use unique order.id */}
+                  <tr key={order.id}>
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>
                       {formatCustomerName(order.firstName, order.lastName)}
                     </td>
 
-                    {/* Fraud Report Cell - styled scrollable box */}
+                    {/* Fraud Report Cell - now 600px wide */}
                     <td style={tdStyle}>
                       {order.fraudReport ? (
                         <div
                           style={{
-                            maxWidth: "300px",
+                            maxWidth: "100%",            // fill the 600px cell
                             maxHeight: "150px",
                             overflow: "auto",
                             whiteSpace: "pre-wrap",
