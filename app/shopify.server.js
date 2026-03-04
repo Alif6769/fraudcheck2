@@ -94,7 +94,7 @@ export async function syncOrders(session, admin) {
 
   const GET_ORDERS = `
     query getOrders($query: String!) {
-      orders(first: 100, query: $query) {
+      orders(first: 100, query: $query, sortKey: CREATED_AT, reverse: true) {
         edges {
           node {
             id
