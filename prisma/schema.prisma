@@ -34,41 +34,17 @@ model Session {
 }
 
 model Order {
-  id                       Int      @id @default(autoincrement())
-  shop                     String
-  orderId                  String
-  orderNumber              Int
-  name                     String?
-  totalPrice               Float
-  subtotalPrice            Float?
-  totalTax                 Float?
-  currency                 String?
-  financialStatus          String?
-  fulfillmentStatus        String?
-  cancelReason             String?
-
-  customerEmail            String?
-  customerFirstName        String?
-  customerLastName         String?
-  customerId               String?
-
-  shippingPhone            String?
-  customerFullName         String?
-  shippingAddress          String?
-  billingAddress           String?
-
-  customerTotalOrders      Int?
-  customerFulfilledOrders  Int?
-
-  lineItems                String?
-  discountCodes            String?
-  shippingLines            String?
-
-  orderDate                DateTime
-  updatedAt                DateTime
-  processedAt              DateTime?
-
-  rawData                  String?
-
-  @@unique([orderId, shop])
+  id              Int      @id @default(autoincrement())
+  orderId         String   @unique
+  shop            String
+  orderTime       DateTime
+  customerId      String?
+  firstName       String?
+  lastName        String?
+  contactPhone    String?
+  shippingPhone   String?
+  shippingAddress String?
+  totalPrice      String
+  shippingFee     String
+  products        Json
 }

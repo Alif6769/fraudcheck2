@@ -332,25 +332,59 @@
 
 
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server"; // Add this import
+import prisma from "../db.server";
 import { useLoaderData } from "react-router";
+
+/* =========================
+   LOADER
+========================= */
 
 export const loader = async ({ request }) => {
   try {
     const { session } = await authenticate.admin(request);
+
     const orders = await prisma.order.findMany({
       where: { shop: session.shop },
-      orderBy: { orderDate: "desc" },
+      orderBy: { orderTime: "desc" }, // ✅ newest first
     });
+
     return { orders, shop: session.shop };
   } catch (error) {
     console.error("❌ Loader error:", error);
-    throw new Response(error.message, { status: 500 });
+    throw new Response("Failed to load orders", { status: 500 });
   }
 };
 
+/* =========================
+   COMPONENT
+========================= */
+
 export default function Index() {
   const { orders = [], shop = "" } = useLoaderData() || {};
+
+  const thStyle = {
+    padding: "10px",
+    border: "1px solid #ddd",
+    fontWeight: "bold",
+    backgroundColor: "#f4f6f8",
+    textAlign: "left",
+  };
+
+  const tdStyle = {
+    padding: "10px",
+    border: "1px solid #ddd",
+    verticalAlign: "top",
+  };
+
+  const formatDate = (date) => {
+    if (!date) return "-";
+    return new Date(date).toLocaleString();
+  };
+
+  const formatCustomerName = (first, last) => {
+    const fullName = `${first ?? ""} ${last ?? ""}`.trim();
+    return fullName || "Guest";
+  };
 
   return (
     <s-page heading="Orders Dashboard">
@@ -362,45 +396,94 @@ export default function Index() {
         {orders.length === 0 ? (
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
-          <table
-            style={{
-              width: "100%",
-              marginTop: "20px",
-              borderCollapse: "collapse",
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#f4f6f8" }}>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Order #</th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Customer</th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Email</th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Total</th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Status</th>
-                <th style={{ padding: "8px", border: "1px solid #ddd" }}>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((order) => (
-                <tr key={order.id}>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.orderNumber}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.customerFullName}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.customerEmail}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.totalPrice} {order.currency}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>{order.financialStatus}</td>
-                  <td style={{ padding: "8px", border: "1px solid #ddd" }}>
-                    {new Date(order.orderDate).toLocaleDateString()}
-                  </td>
+          <div style={{ overflowX: "auto", marginTop: "20px" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "14px",
+              }}
+            >
+              <thead>
+                <tr>
+                  <th style={thStyle}>Order ID</th>
+                  <th style={thStyle}>Order Time</th>
+                  <th style={thStyle}>Customer Name</th>
+                  <th style={thStyle}>Shipping Phone</th>
+                  <th style={thStyle}>Shipping Address</th>
+                  <th style={thStyle}>Total Price</th>
+                  <th style={thStyle}>Shipping Fee</th>
+                  <th style={thStyle}>Products</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    {/* Order ID */}
+                    <td style={tdStyle}>
+                      {order.orderId || "-"}
+                    </td>
+
+                    {/* Order Time */}
+                    <td style={tdStyle}>
+                      {formatDate(order.orderTime)}
+                    </td>
+
+                    {/* Customer Name */}
+                    <td style={tdStyle}>
+                      {formatCustomerName(order.firstName, order.lastName)}
+                    </td>
+
+                    {/* Shipping Phone */}
+                    <td style={tdStyle}>
+                      {order.shippingPhone || "-"}
+                    </td>
+
+                    {/* Shipping Address */}
+                    <td style={tdStyle}>
+                      {order.shippingAddress || "-"}
+                    </td>
+
+                    {/* Total Price */}
+                    <td style={tdStyle}>
+                      {order.totalPrice || "0"}
+                    </td>
+
+                    {/* Shipping Fee */}
+                    <td style={tdStyle}>
+                      {order.shippingFee || "0"}
+                    </td>
+
+                    {/* Products */}
+                    <td style={tdStyle}>
+                      {Array.isArray(order.products) &&
+                      order.products.length > 0 ? (
+                        order.products.map((product, index) => (
+                          <div key={index}>
+                            {product.title || "Product"} ×{" "}
+                            {product.quantity || 1}
+                          </div>
+                        ))
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </s-section>
     </s-page>
   );
 }
 
-// Optional headers for Shopify SSR caching
-export const headers = (headersArgs) => {
+/* =========================
+   HEADERS (Optional)
+========================= */
+
+export const headers = () => {
   return {};
 };

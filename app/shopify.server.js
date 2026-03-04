@@ -68,21 +68,110 @@ const shopify = shopifyApp({
       }
     },
   },
-  // hooks: {
-  //   afterAuth: async ({ session, admin }) => {
-  //     console.log("✅ afterAuth hook started for", session.shop);
-  //     try {
-  //       const results = await shopify.registerWebhooks({ session, admin });
-  //       console.log("📋 Webhook registration results:", JSON.stringify(results, null, 2));
-  //     } catch (error) {
-  //       console.error("❌ Webhook registration failed:", error);
-  //     }
-  //   },
-  // },
+
+  afterAuth: async ({ session, admin }) => {
+    console.log("App installed for:", session.shop);
+
+    // 1️⃣ Calculate 10 days ago
+    const tenDaysAgo = new Date();
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+    const dateQuery = `created_at:>=${tenDaysAgo.toISOString()}`;
+
+    // 2️⃣ GraphQL Query
+    const GET_ORDERS = `
+      query getOrders($query: String!) {
+        orders(first: 100, query: $query) {
+          edges {
+            node {
+              id
+              createdAt
+              totalPriceSet {
+                shopMoney {
+                  amount
+                }
+              }
+              customer {
+                id
+                firstName
+                lastName
+                phone
+              }
+              shippingAddress {
+                address1
+                city
+                country
+                phone
+              }
+              shippingLines(first: 1) {
+                edges {
+                  node {
+                    priceSet {
+                      shopMoney {
+                        amount
+                      }
+                    }
+                  }
+                }
+              }
+              lineItems(first: 20) {
+                edges {
+                  node {
+                    title
+                    quantity
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(GET_ORDERS, {
+      variables: { query: dateQuery },
+    });
+
+    const json = await response.json();
+    const orders = json.data.orders.edges;
+
+    // 3️⃣ Clean Data (Only what you need)
+    const cleanedOrders = orders.map(({ node }) => ({
+      orderId: node.id,
+      orderTime: node.createdAt,
+      customerId: node.customer?.id || null,
+      firstName: node.customer?.firstName || null,
+      lastName: node.customer?.lastName || null,
+      contactPhone: node.customer?.phone || null,
+      shippingPhone: node.shippingAddress?.phone || null,
+      shippingAddress: node.shippingAddress?.address1 || null,
+      totalPrice: node.totalPriceSet.shopMoney.amount,
+      shippingFee:
+        node.shippingLines.edges[0]?.node.priceSet.shopMoney.amount || 0,
+      products: node.lineItems.edges.map((item) => ({
+        title: item.node.title,
+        quantity: item.node.quantity,
+      })),
+      shop: session.shop,
+    }));
+
+    // 4️⃣ Save to DB
+    for (const order of cleanedOrders) {
+      await prisma.order.upsert({
+        where: { orderId: order.orderId },
+        update: order,
+        create: order,
+      });
+    }
+
+    console.log("✅ Initial 10-day order sync complete.");
+  },
   
   // future: {
   //   expiringOfflineAccessTokens: true,
   // },
+
+
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
