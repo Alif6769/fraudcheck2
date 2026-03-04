@@ -1,4 +1,3 @@
-
 import {
   useLoaderData,
   useFetcher,
@@ -12,7 +11,6 @@ import prisma from "../db.server";
 /* =========================
    ACTION (Sync Orders)
 ========================= */
-
 export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
@@ -62,7 +60,6 @@ export const action = async ({ request }) => {
 /* =========================
    LOADER (Load Orders)
 ========================= */
-
 export const loader = async ({ request }) => {
   try {
     const { session } = await authenticate.admin(request);
@@ -82,7 +79,6 @@ export const loader = async ({ request }) => {
 /* =========================
    HELPERS
 ========================= */
-
 function formatDate(date) {
   if (!date) return "-";
   return new Date(date).toLocaleString();
@@ -90,6 +86,21 @@ function formatDate(date) {
 
 function formatCustomerName(first, last) {
   return [first, last].filter(Boolean).join(" ") || "-";
+}
+
+function getDhakaStatus(shippingAddressStr) {
+  if (!shippingAddressStr) return "-";
+  try {
+    const address = JSON.parse(shippingAddressStr);
+    const city = address.city || "";
+    if (city.toLowerCase().includes("dhaka")) {
+      return "Inside Dhaka";
+    } else {
+      return "Outside Dhaka";
+    }
+  } catch (e) {
+    return "-";
+  }
 }
 
 const thStyle = {
@@ -102,35 +113,17 @@ const thStyle = {
 const tdStyle = {
   borderBottom: "1px solid #eee",
   padding: "8px",
+  verticalAlign: "top",
 };
-
-// NEW HELPER: Determine if shipping address is inside Dhaka
-function getDhakaStatus(shippingAddressStr) {
-  if (!shippingAddressStr) return "-";
-  try {
-    const address = JSON.parse(shippingAddressStr);
-    const city = address.city || "";
-    // Case‑insensitive check for "dhaka"
-    if (city.toLowerCase().includes("dhaka")) {
-      return "Inside Dhaka";
-    } else {
-      return "Outside Dhaka";
-    }
-  } catch (e) {
-    return "-";
-  }
-}
 
 /* =========================
    COMPONENT
 ========================= */
-
 export default function Index() {
   const { orders = [], shop = "" } = useLoaderData() || {};
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
 
-  // ✅ Auto refresh table after successful sync
   useEffect(() => {
     if (fetcher.data?.success) {
       revalidator.revalidate();
@@ -155,33 +148,19 @@ export default function Index() {
             borderRadius: "6px",
           }}
         >
-          {fetcher.state === "submitting"
-            ? "Syncing..."
-            : "Sync Orders"}
+          {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
         </button>
 
         {/* Success Message */}
         {fetcher.data?.success && (
-          <div
-            style={{
-              marginBottom: "10px",
-              color: "green",
-              fontWeight: "500",
-            }}
-          >
+          <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
             ✅ {fetcher.data.synced} orders synced successfully
           </div>
         )}
 
         {/* Error Message */}
         {fetcher.data?.error && (
-          <div
-            style={{
-              marginBottom: "10px",
-              color: "red",
-              fontWeight: "500",
-            }}
-          >
+          <div style={{ marginBottom: "10px", color: "red", fontWeight: "500" }}>
             ❌ {fetcher.data.error}
           </div>
         )}
@@ -217,49 +196,47 @@ export default function Index() {
 
               <tbody>
                 {orders.map((order) => (
-                  <tr key={order.orderName}>
+                  <tr key={order.id}> {/* Use unique order.id */}
+                    <td style={tdStyle}>{order.orderName || "-"}</td>
+                    <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>
-                      {order.orderName || "-"}
+                      {formatCustomerName(order.firstName, order.lastName)}
                     </td>
 
+                    {/* Fraud Report Cell - styled scrollable box */}
                     <td style={tdStyle}>
-                      {formatDate(order.orderTime)}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {formatCustomerName(
-                        order.firstName,
-                        order.lastName
+                      {order.fraudReport ? (
+                        <div
+                          style={{
+                            maxWidth: "300px",
+                            maxHeight: "150px",
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                            background: "#f5f5f5",
+                            padding: "4px",
+                            fontSize: "11px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {order.fraudReport}
+                        </div>
+                      ) : (
+                        "-"
                       )}
                     </td>
 
-                    <td style={tdStyle}>
-                      {order.fraudReport || "-"}
-                    </td>
+                    <td style={tdStyle}>{order.shippingPhone || "-"}</td>
+                    <td style={tdStyle}>{getDhakaStatus(order.shippingAddress)}</td>
+                    <td style={tdStyle}>{order.totalPrice || "0"}</td>
+                    <td style={tdStyle}>{order.shippingFee || "0"}</td>
 
+                    {/* Products Cell */}
                     <td style={tdStyle}>
-                      {order.shippingPhone || "-"}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {getDhakaStatus(order.shippingAddress)}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {order.totalPrice || "0"}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {order.shippingFee || "0"}
-                    </td>
-
-                    <td style={tdStyle}>
-                      {Array.isArray(order.products) &&
-                      order.products.length > 0 ? (
+                      {Array.isArray(order.products) && order.products.length > 0 ? (
                         order.products.map((product, index) => (
                           <div key={index}>
-                            {product.title || "Product"} ×{" "}
-                            {product.quantity || 1}
+                            {product.title || "Product"} × {product.quantity || 1}
                           </div>
                         ))
                       ) : (
@@ -281,7 +258,6 @@ export default function Index() {
 /* =========================
    HEADERS
 ========================= */
-
 export const headers = () => {
   return {};
 };

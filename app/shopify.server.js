@@ -183,22 +183,46 @@ export async function syncOrders(session, admin) {
       });
     }
 
-    for (const order of cleanedOrders) {
-      // We need the source; but cleanedOrders doesn't have source yet. We can query the database or include it.
-      // Let's query the order we just upserted to get its source.
-      const dbOrder = await prisma.order.findUnique({ where: { orderId: order.orderId } });
-      if (dbOrder && dbOrder.source === 'web' && !dbOrder.fraudReport && order.shippingPhone) {
-        try {
-          const { fetchFraudReport } = await import('./services/fraudspy.service');
-          const report = await fetchFraudReport(order.shippingPhone);
-          await prisma.order.update({
-            where: { orderId: order.orderId },
-            data: { fraudReport: report },
-          });
-          console.log(`✅ Fraud report synced for order ${order.orderId}`);
-        } catch (error) {
-          console.error(`❌ Fraud report sync failed for order ${order.orderId}:`, error.message);
-        }
+    // Only look at the newest 20 orders
+    for (const order of cleanedOrders.slice(0, 20)) {
+      // Get the order from DB to see source and existing fraudReport
+      const dbOrder = await prisma.order.findUnique({
+        where: { orderId: order.orderId },
+        select: {
+          source: true,
+          fraudReport: true,
+        },
+      });
+
+      // Skip if:
+      // - no DB record (upsert failed), OR
+      // - not a web order, OR
+      // - fraudReport already exists, OR
+      // - no shipping phone to check
+      if (
+        !dbOrder ||
+        dbOrder.source !== 'web' ||
+        dbOrder.fraudReport ||      // ✅ already has a fraud report → skip
+        !order.shippingPhone
+      ) {
+        continue;
+      }
+
+      try {
+        const { fetchFraudReport } = await import('./services/fraudspy.service');
+        const report = await fetchFraudReport(order.shippingPhone);
+
+        await prisma.order.update({
+          where: { orderId: order.orderId },
+          data: { fraudReport: report },
+        });
+
+        console.log(`✅ Fraud report synced for order ${order.orderId}`);
+      } catch (error) {
+        console.error(
+          `❌ Fraud report sync failed for order ${order.orderId}:`,
+          error.message,
+        );
       }
     }
 
