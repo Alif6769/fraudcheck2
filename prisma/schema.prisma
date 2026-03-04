@@ -36,6 +36,7 @@ model Session {
 model Order {
   id              Int      @id @default(autoincrement())
   orderId         String   @unique
+  orderName       String   @default("-")
   shop            String
   orderTime       DateTime
   customerId      String?

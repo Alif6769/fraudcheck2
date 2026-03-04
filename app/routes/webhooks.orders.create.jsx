@@ -1,17 +1,11 @@
-// app/routes/webhooks.orders.create.jsx
-import { authenticate } from "../shopify.server";
-import prisma from "../db.server";
-
 export const action = async ({ request }) => {
   try {
-    // Verify the webhook is from Shopify
     const { topic, shop, payload, admin } = await authenticate.webhook(request);
     
     console.log(`📦 Order created webhook received from ${shop}`);
     console.log(`Order ID: ${payload.id}`);
     console.log(`Order number: #${payload.order_number}`);
 
-    // --- Extract data according to the new Prisma schema ---
     const orderId = payload.id.toString();
     const orderTime = new Date(payload.created_at);
     
@@ -19,7 +13,7 @@ export const action = async ({ request }) => {
     const customerId = payload.customer?.id?.toString() || null;
     const firstName = payload.customer?.first_name || null;
     const lastName = payload.customer?.last_name || null;
-    const contactPhone = payload.customer?.phone || null; // customer's main phone, if any
+    const contactPhone = payload.customer?.phone || null;
 
     // Shipping details
     const shippingPhone = payload.shipping_address?.phone || null;
@@ -27,10 +21,10 @@ export const action = async ({ request }) => {
       ? JSON.stringify(payload.shipping_address)
       : null;
 
-    // Total price (keep as string, e.g., "49.99")
+    // Total price
     const totalPrice = payload.total_price || "0";
 
-    // Shipping fee – try to get from total_shipping_price_set, otherwise sum shipping lines
+    // Shipping fee
     let shippingFee = "0";
     if (payload.total_shipping_price_set?.shop_money?.amount) {
       shippingFee = payload.total_shipping_price_set.shop_money.amount;
@@ -40,7 +34,7 @@ export const action = async ({ request }) => {
         .toString();
     }
 
-    // Products – store as JSON array with relevant fields
+    // Products
     const products = (payload.line_items || []).map((item) => ({
       id: item.id,
       title: item.title,
@@ -51,9 +45,10 @@ export const action = async ({ request }) => {
       sku: item.sku,
     }));
 
-    // Build the object that exactly matches the Prisma model
+    // Build order data – including the new orderName field
     const orderData = {
       orderId,
+      orderName: payload.name,        // ✅ Added this line
       shop,
       orderTime,
       customerId,
@@ -64,12 +59,11 @@ export const action = async ({ request }) => {
       shippingAddress,
       totalPrice,
       shippingFee,
-      products, // Prisma will automatically convert this to JSON
+      products,
     };
 
-    // Save to database – upsert using the unique orderId
     await prisma.order.upsert({
-      where: { orderId }, // because orderId is marked @unique
+      where: { orderId },
       update: orderData,
       create: orderData,
     });
@@ -80,9 +74,4 @@ export const action = async ({ request }) => {
     console.error("❌ Webhook processing error:", error);
     return new Response(error.message, { status: 500 });
   }
-};
-
-// Handle GET requests (for testing only)
-export const loader = async ({ request }) => {
-  return new Response("Orders webhook endpoint is ready", { status: 200 });
 };

@@ -160,11 +160,11 @@ export async function syncOrders(session, admin) {
       lastName: node.customer?.lastName || null,
       contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber || null,
       shippingPhone: node.shippingAddress?.phone || null,
-      shippingAddress: node.shippingAddress?.address1 || null,
+      // ✅ Store full address as JSON
+      shippingAddress: node.shippingAddress ? JSON.stringify(node.shippingAddress) : null,
       totalPrice: String(node.totalPriceSet?.shopMoney?.amount ?? "0"),
       shippingFee: String(
-        node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ??
-          "0",
+        node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ?? "0"
       ),
       products: (node.lineItems?.edges || []).map((item) => ({
         title: item.node.title,
