@@ -20,3 +20,25 @@ CREATE TABLE "Session" (
 
     CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
 );
+
+-- CreateTable
+CREATE TABLE "Order" (
+    "id" SERIAL NOT NULL,
+    "orderId" TEXT NOT NULL,
+    "shop" TEXT NOT NULL,
+    "orderTime" TIMESTAMP(3) NOT NULL,
+    "customerId" TEXT,
+    "firstName" TEXT,
+    "lastName" TEXT,
+    "contactPhone" TEXT,
+    "shippingPhone" TEXT,
+    "shippingAddress" TEXT,
+    "totalPrice" TEXT NOT NULL,
+    "shippingFee" TEXT NOT NULL,
+    "products" JSONB NOT NULL,
+
+    CONSTRAINT "Order_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Order_orderId_key" ON "Order"("orderId");
