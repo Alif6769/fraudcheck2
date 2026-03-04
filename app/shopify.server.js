@@ -92,21 +92,48 @@ export async function syncOrders(session, admin) {
   const GET_ORDERS = `
     query getOrders($query: String!) {
       orders(first: 100, query: $query) {
-        edges { node {
-          id
-          createdAt
-          totalPriceSet { shopMoney { amount } }
-          customer { id firstName lastName phone }
-          shippingAddress { address1 city country phone }
-          shippingLines {
-            originalPriceSet {
+        edges {
+          node {
+            id
+            createdAt
+            totalPriceSet {
               shopMoney {
                 amount
               }
             }
+            customer {
+              id
+              firstName
+              lastName
+              phone
+            }
+            shippingAddress {
+              address1
+              city
+              country
+              phone
+            }
+
+            shippingLines(first: 10) {
+              edges {
+                node {
+                  price {
+                    amount
+                  }
+                }
+              }
+            }
+
+            lineItems(first: 20) {
+              edges {
+                node {
+                  title
+                  quantity
+                }
+              }
+            }
           }
-          lineItems(first:20) { edges { node { title quantity } } }
-        } }
+        }
       }
     }
   `;
@@ -124,7 +151,7 @@ export async function syncOrders(session, admin) {
     shippingPhone: node.shippingAddress?.phone || null,
     shippingAddress: node.shippingAddress?.address1 || null,
     totalPrice: node.totalPriceSet.shopMoney.amount,
-    shippingFee: node.shippingLines?.[0]?.originalPriceSet?.shopMoney?.amount || 0,
+    shippingFee: node.shippingLines?.edges?.[0]?.node?.price?.amount || 0,
     products: node.lineItems.edges.map((item) => ({
       title: item.node.title,
       quantity: item.node.quantity,
