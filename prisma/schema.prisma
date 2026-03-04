@@ -36,7 +36,7 @@ model Session {
 model Order {
   id              Int      @id @default(autoincrement())
   orderId         String   @unique
-  orderName       String   @default("-")
+  orderName       String
   shop            String
   orderTime       DateTime
   customerId      String?
@@ -48,4 +48,9 @@ model Order {
   totalPrice      String
   shippingFee     String
   products        Json
+  // new fields
+  source          String?   // e.g., "web", "pos", etc.
+  fraudReport     String?   // full text report from FraudSpy
+  steadFastReport String?
+  realName        String?
 }

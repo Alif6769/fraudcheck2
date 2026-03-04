@@ -17,27 +17,44 @@ export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
 
+    // First sync orders from Shopify (last 10 days)
     const count = await syncOrders(session, admin);
 
-    return new Response(
-      JSON.stringify({ success: true, synced: count }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+    // Then ensure the most recent 20 online orders have fraud reports
+    const recentOrders = await prisma.order.findMany({
+      where: {
+        shop: session.shop,
+        source: 'web',
+        fraudReport: null,
+      },
+      orderBy: { orderTime: 'desc' },
+      take: 20,
+    });
+
+    for (const order of recentOrders) {
+      if (order.shippingPhone) {
+        try {
+          const { fetchFraudReport } = await import('../services/fraudspy.service');
+          const report = await fetchFraudReport(order.shippingPhone);
+          await prisma.order.update({
+            where: { orderId: order.orderId },
+            data: { fraudReport: report },
+          });
+        } catch (error) {
+          console.error(`Failed fraud report for ${order.orderId}:`, error.message);
+        }
       }
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, synced: count, fraudProcessed: recentOrders.length }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("❌ Sync orders failed:", error);
-
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
-      }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 };
@@ -189,6 +206,7 @@ export default function Index() {
                   <th style={thStyle}>Order Name</th>
                   <th style={thStyle}>Order Time</th>
                   <th style={thStyle}>Customer Name</th>
+                  <th style={thStyle}>FraudSpy Report</th>
                   <th style={thStyle}>Shipping Phone</th>
                   <th style={thStyle}>Shipping Address</th>
                   <th style={thStyle}>Total Price</th>
@@ -213,6 +231,10 @@ export default function Index() {
                         order.firstName,
                         order.lastName
                       )}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {order.fraudReport || "-"}
                     </td>
 
                     <td style={tdStyle}>

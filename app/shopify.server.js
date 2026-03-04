@@ -99,6 +99,7 @@ export async function syncOrders(session, admin) {
           node {
             id
             name
+            sourceName
             createdAt
             totalPriceSet {
               shopMoney {
@@ -155,6 +156,7 @@ export async function syncOrders(session, admin) {
       orderId: node.id,
       orderName: node.name,
       orderTime: node.createdAt,
+      source: node.sourceName || null,
       customerId: node.customer?.id || null,
       firstName: node.customer?.firstName || null,
       lastName: node.customer?.lastName || null,
@@ -179,6 +181,25 @@ export async function syncOrders(session, admin) {
         update: order,
         create: order,
       });
+    }
+
+    for (const order of cleanedOrders) {
+      // We need the source; but cleanedOrders doesn't have source yet. We can query the database or include it.
+      // Let's query the order we just upserted to get its source.
+      const dbOrder = await prisma.order.findUnique({ where: { orderId: order.orderId } });
+      if (dbOrder && dbOrder.source === 'web' && !dbOrder.fraudReport && order.shippingPhone) {
+        try {
+          const { fetchFraudReport } = await import('../services/fraudspy.service');
+          const report = await fetchFraudReport(order.shippingPhone);
+          await prisma.order.update({
+            where: { orderId: order.orderId },
+            data: { fraudReport: report },
+          });
+          console.log(`✅ Fraud report synced for order ${order.orderId}`);
+        } catch (error) {
+          console.error(`❌ Fraud report sync failed for order ${order.orderId}:`, error.message);
+        }
+      }
     }
 
     console.log(`✅ Synced ${cleanedOrders.length} orders for ${session.shop}`);
