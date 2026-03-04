@@ -199,7 +199,7 @@ export default function Index() {
         {orders.length === 0 ? (
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
-          <div style={{ overflow: "auto", maxHeight: "90vh", marginTop: "10px", width: "100%" }}>
+          <div style={{ overflow: "auto", maxHeight: "80vh", marginTop: "10px", width: "100%" }}>
             <table
               style={{
                 width: "100%",
