@@ -84,6 +84,9 @@ const shopify = shopifyApp({
 // ============================
 // SYNC ORDERS FUNCTION
 // ============================
+// ============================
+// SYNC ORDERS FUNCTION (FIXED)
+// ============================
 export async function syncOrders(session, admin) {
   const tenDaysAgo = new Date();
   tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
@@ -113,17 +116,17 @@ export async function syncOrders(session, admin) {
               country
               phone
             }
-
             shippingLines(first: 10) {
               edges {
                 node {
-                  price {
-                    amount
+                  priceSet {          // ✅ Use priceSet instead of price
+                    shopMoney {
+                      amount
+                    }
                   }
                 }
               }
             }
-
             lineItems(first: 20) {
               edges {
                 node {
@@ -138,37 +141,50 @@ export async function syncOrders(session, admin) {
     }
   `;
 
-  const result = await admin.graphql(GET_ORDERS, { variables: { query: dateQuery } });
-  const orders = result.orders.edges;
-
-  const cleanedOrders = orders.map(({ node }) => ({
-    orderId: node.id,
-    orderTime: node.createdAt,
-    customerId: node.customer?.id || null,
-    firstName: node.customer?.firstName || null,
-    lastName: node.customer?.lastName || null,
-    contactPhone: node.customer?.phone || null,
-    shippingPhone: node.shippingAddress?.phone || null,
-    shippingAddress: node.shippingAddress?.address1 || null,
-    totalPrice: node.totalPriceSet.shopMoney.amount,
-    shippingFee: node.shippingLines?.edges?.[0]?.node?.price?.amount || 0,
-    products: node.lineItems.edges.map((item) => ({
-      title: item.node.title,
-      quantity: item.node.quantity,
-    })),
-    shop: session.shop,
-  }));
-
-  for (const order of cleanedOrders) {
-    await prisma.order.upsert({
-      where: { orderId: order.orderId },
-      update: order,
-      create: order,
+  try {
+    const response = await admin.graphql(GET_ORDERS, {
+      variables: { query: dateQuery },
     });
-  }
+    const { data } = await response.json();
+    const orders = data?.orders?.edges || [];
 
-  console.log(`✅ Synced ${cleanedOrders.length} orders for ${session.shop}`);
-  return cleanedOrders.length;
+    const cleanedOrders = orders.map(({ node }) => ({
+      orderId: node.id,
+      orderTime: node.createdAt,
+      customerId: node.customer?.id || null,
+      firstName: node.customer?.firstName || null,
+      lastName: node.customer?.lastName || null,
+      contactPhone: node.customer?.phone || null,
+      shippingPhone: node.shippingAddress?.phone || null,
+      shippingAddress: node.shippingAddress?.address1 || null,
+      totalPrice: node.totalPriceSet?.shopMoney?.amount || 0,
+      shippingFee: node.shippingLines?.edges?.[0]?.node?.priceSet?.shopMoney?.amount || 0,
+      products: (node.lineItems?.edges || []).map((item) => ({
+        title: item.node.title,
+        quantity: item.node.quantity,
+      })),
+      shop: session.shop,
+    }));
+
+    for (const order of cleanedOrders) {
+      await prisma.order.upsert({
+        where: {
+          orderId_shop: {          // ✅ Use the composite key
+            orderId: order.orderId,
+            shop: order.shop,
+          },
+        },
+        update: order,
+        create: order,
+      });
+    }
+
+    console.log(`✅ Synced ${cleanedOrders.length} orders for ${session.shop}`);
+    return cleanedOrders.length;
+  } catch (error) {
+    console.error(`❌ Sync failed for ${session.shop}:`, error);
+    throw error; // rethrow if you want the calling route to handle it
+  }
 }
 
 export default shopify;
