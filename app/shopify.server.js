@@ -172,14 +172,13 @@ export async function syncOrders(session, admin) {
       });
     }
 
-    // After upsert, find up to 20 orders that need either report
     const ordersNeedingReports = await prisma.order.findMany({
       where: {
         shop: session.shop,
         source: 'web',
         OR: [
           { fraudReport: null },
-          { steadFastReport: null }
+          { steadFastReport: null }   // ✅ capital F
         ],
         NOT: { shippingPhone: null }
       },
@@ -187,7 +186,7 @@ export async function syncOrders(session, admin) {
       take: 20,
     });
 
-    // Dynamically import both services (only once)
+    // Dynamically import both services
     const { fetchFraudReport } = await import('./services/fraudspy.service');
     const { fetchSteadfastReport } = await import('./services/steadfast.service');
 
@@ -208,13 +207,13 @@ export async function syncOrders(session, admin) {
         }
       }
 
-      // Steadfast
-      if (!order.steadFastReport) {
+      // Steadfast – use steadFastReport (capital F)
+      if (!order.steadFastReport) {   // ✅ capital F
         try {
           const report = await fetchSteadfastReport(phone);
           await prisma.order.update({
             where: { orderId: order.orderId },
-            data: { steadfastReport: report },
+            data: { steadFastReport: report },   // ✅ capital F
           });
           console.log(`✅ Steadfast synced for ${order.orderId}`);
         } catch (error) {
