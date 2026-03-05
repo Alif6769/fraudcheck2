@@ -232,7 +232,7 @@ export default function Index() {
                     </td>
 
                     <td style={tdStyle}>
-                      {order.steadfastReport ? (
+                      {order.steadFastReport ? (
                         <div
                           style={{
                             maxWidth: "100%",
@@ -246,7 +246,7 @@ export default function Index() {
                             borderRadius: "4px",
                           }}
                         >
-                          {order.steadfastReport}
+                          {order.steadFastReport}
                         </div>
                       ) : (
                         "-"
