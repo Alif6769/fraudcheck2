@@ -102,17 +102,13 @@ export async function syncOrders(session, admin) {
             sourceName
             createdAt
             totalPriceSet {
-              shopMoney {
-                amount
-              }
+              shopMoney { amount }
             }
             customer {
               id
               firstName
               lastName
-              defaultPhoneNumber {
-                phoneNumber
-              }
+              defaultPhoneNumber { phoneNumber }
             }
             shippingAddress {
               address1
@@ -123,20 +119,13 @@ export async function syncOrders(session, admin) {
             shippingLines(first: 10) {
               edges {
                 node {
-                  originalPriceSet {
-                    shopMoney {
-                      amount
-                    }
-                  }
+                  originalPriceSet { shopMoney { amount } }
                 }
               }
             }
             lineItems(first: 20) {
               edges {
-                node {
-                  title
-                  quantity
-                }
+                node { title quantity }
               }
             }
           }
@@ -162,7 +151,6 @@ export async function syncOrders(session, admin) {
       lastName: node.customer?.lastName || null,
       contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber || null,
       shippingPhone: node.shippingAddress?.phone || null,
-      // ✅ Store full address as JSON
       shippingAddress: node.shippingAddress ? JSON.stringify(node.shippingAddress) : null,
       totalPrice: String(node.totalPriceSet?.shopMoney?.amount ?? "0"),
       shippingFee: String(
@@ -175,6 +163,7 @@ export async function syncOrders(session, admin) {
       shop: session.shop,
     }));
 
+    // Upsert all orders
     for (const order of cleanedOrders) {
       await prisma.order.upsert({
         where: { orderId: order.orderId },
@@ -183,46 +172,54 @@ export async function syncOrders(session, admin) {
       });
     }
 
-    // Only look at the newest 20 orders
-    for (const order of cleanedOrders.slice(0, 20)) {
-      // Get the order from DB to see source and existing fraudReport
-      const dbOrder = await prisma.order.findUnique({
-        where: { orderId: order.orderId },
-        select: {
-          source: true,
-          fraudReport: true,
-        },
-      });
+    // After upsert, find up to 20 orders that need either report
+    const ordersNeedingReports = await prisma.order.findMany({
+      where: {
+        shop: session.shop,
+        source: 'web',
+        OR: [
+          { fraudReport: null },
+          { steadfastReport: null }
+        ],
+        NOT: { shippingPhone: null }
+      },
+      orderBy: { orderTime: 'desc' },
+      take: 20,
+    });
 
-      // Skip if:
-      // - no DB record (upsert failed), OR
-      // - not a web order, OR
-      // - fraudReport already exists, OR
-      // - no shipping phone to check
-      if (
-        !dbOrder ||
-        dbOrder.source !== 'web' ||
-        dbOrder.fraudReport ||      // ✅ already has a fraud report → skip
-        !order.shippingPhone
-      ) {
-        continue;
+    // Dynamically import both services (only once)
+    const { fetchFraudReport } = await import('./services/fraudspy.service');
+    const { fetchSteadfastReport } = await import('./services/steadfast.service');
+
+    for (const order of ordersNeedingReports) {
+      const phone = order.shippingPhone;
+
+      // FraudSpy
+      if (!order.fraudReport) {
+        try {
+          const report = await fetchFraudReport(phone);
+          await prisma.order.update({
+            where: { orderId: order.orderId },
+            data: { fraudReport: report },
+          });
+          console.log(`✅ FraudSpy synced for ${order.orderId}`);
+        } catch (error) {
+          console.error(`❌ FraudSpy failed for ${order.orderId}:`, error.message);
+        }
       }
 
-      try {
-        const { fetchFraudReport } = await import('./services/fraudspy.service');
-        const report = await fetchFraudReport(order.shippingPhone);
-
-        await prisma.order.update({
-          where: { orderId: order.orderId },
-          data: { fraudReport: report },
-        });
-
-        console.log(`✅ Fraud report synced for order ${order.orderId}`);
-      } catch (error) {
-        console.error(
-          `❌ Fraud report sync failed for order ${order.orderId}:`,
-          error.message,
-        );
+      // Steadfast
+      if (!order.steadfastReport) {
+        try {
+          const report = await fetchSteadfastReport(phone);
+          await prisma.order.update({
+            where: { orderId: order.orderId },
+            data: { steadfastReport: report },
+          });
+          console.log(`✅ Steadfast synced for ${order.orderId}`);
+        } catch (error) {
+          console.error(`❌ Steadfast failed for ${order.orderId}:`, error.message);
+        }
       }
     }
 

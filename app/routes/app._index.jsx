@@ -14,38 +14,9 @@ import prisma from "../db.server";
 export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
-
-    // First sync orders from Shopify (last 10 days)
     const count = await syncOrders(session, admin);
-
-    // Then ensure the most recent 20 online orders have fraud reports
-    const recentOrders = await prisma.order.findMany({
-      where: {
-        shop: session.shop,
-        source: 'web',
-        fraudReport: null,
-      },
-      orderBy: { orderTime: 'desc' },
-      take: 20,
-    });
-
-    for (const order of recentOrders) {
-      if (order.shippingPhone) {
-        try {
-          const { fetchFraudReport } = await import('../services/fraudspy.service');
-          const report = await fetchFraudReport(order.shippingPhone);
-          await prisma.order.update({
-            where: { orderId: order.orderId },
-            data: { fraudReport: report },
-          });
-        } catch (error) {
-          console.error(`Failed fraud report for ${order.orderId}:`, error.message);
-        }
-      }
-    }
-
     return new Response(
-      JSON.stringify({ success: true, synced: count, fraudProcessed: recentOrders.length }),
+      JSON.stringify({ success: true, synced: count }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
@@ -215,6 +186,7 @@ export default function Index() {
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
                   <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
+                  <th style={{ ...thStyle, width: "400px" }}>Steadfast Report</th>   {/* new */}
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
@@ -253,6 +225,28 @@ export default function Index() {
                           }}
                         >
                           {order.fraudReport}
+                        </div>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+
+                    <td style={tdStyle}>
+                      {order.steadfastReport ? (
+                        <div
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: "150px",
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                            background: "#f5f5f5",
+                            padding: "4px",
+                            fontSize: "11px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                          }}
+                        >
+                          {order.steadfastReport}
                         </div>
                       ) : (
                         "-"
