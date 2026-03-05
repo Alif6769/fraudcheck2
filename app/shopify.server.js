@@ -179,7 +179,7 @@ export async function syncOrders(session, admin) {
         source: 'web',
         OR: [
           { fraudReport: null },
-          { steadfastReport: null }
+          { steadFastReport: null }
         ],
         NOT: { shippingPhone: null }
       },
@@ -209,7 +209,7 @@ export async function syncOrders(session, admin) {
       }
 
       // Steadfast
-      if (!order.steadfastReport) {
+      if (!order.steadFastReport) {
         try {
           const report = await fetchSteadfastReport(phone);
           await prisma.order.update({
