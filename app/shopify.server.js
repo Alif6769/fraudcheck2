@@ -81,9 +81,7 @@ const shopify = shopifyApp({
     : {}),
 });
 
-// ============================
-// SYNC ORDERS FUNCTION
-// ============================
+
 // ============================
 // SYNC ORDERS FUNCTION (FIXED)
 // ============================
@@ -163,10 +161,10 @@ export async function syncOrders(session, admin) {
       shop: session.shop,
     }));
 
-    // Upsert all orders
+    // Upsert all orders using orderName as the unique identifier
     for (const order of cleanedOrders) {
       await prisma.order.upsert({
-        where: { orderId: order.orderId },
+        where: { orderName: order.orderName }, // ✅ changed from orderId to orderName
         update: order,
         create: order,
       });
@@ -178,7 +176,7 @@ export async function syncOrders(session, admin) {
         source: 'web',
         OR: [
           { fraudReport: null },
-          { steadFastReport: null }   // ✅ capital F
+          { steadFastReport: null }
         ],
         NOT: { shippingPhone: null }
       },
@@ -186,7 +184,6 @@ export async function syncOrders(session, admin) {
       take: 10,
     });
 
-    // Dynamically import both services
     const { fetchFraudReport } = await import('./services/fraudspy.service');
     const { fetchSteadfastReport } = await import('./services/steadfast.service');
 
@@ -198,7 +195,7 @@ export async function syncOrders(session, admin) {
         try {
           const report = await fetchFraudReport(phone);
           await prisma.order.update({
-            where: { orderId: order.orderId },
+            where: { orderName: order.orderName }, // ✅ use orderName here too
             data: { fraudReport: report },
           });
           console.log(`✅ FraudSpy synced for ${order.orderId}`);
@@ -207,13 +204,13 @@ export async function syncOrders(session, admin) {
         }
       }
 
-      // Steadfast – use steadFastReport (capital F)
-      if (!order.steadFastReport) {   // ✅ capital F
+      // Steadfast
+      if (!order.steadFastReport) {
         try {
           const report = await fetchSteadfastReport(phone);
           await prisma.order.update({
-            where: { orderId: order.orderId },
-            data: { steadFastReport: report },   // ✅ capital F
+            where: { orderName: order.orderName }, // ✅ use orderName here too
+            data: { steadFastReport: report },
           });
           console.log(`✅ Steadfast synced for ${order.orderId}`);
         } catch (error) {
