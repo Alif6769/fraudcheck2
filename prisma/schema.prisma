@@ -35,8 +35,8 @@ model Session {
 
 model Order {
   id              Int      @id @default(autoincrement())
-  orderId         String   @unique
-  orderName       String
+  orderId         String   
+  orderName       String   @unique
   shop            String
   orderTime       DateTime
   customerId      String?

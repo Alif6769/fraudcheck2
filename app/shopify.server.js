@@ -183,7 +183,7 @@ export async function syncOrders(session, admin) {
         NOT: { shippingPhone: null }
       },
       orderBy: { orderTime: 'desc' },
-      take: 20,
+      take: 10,
     });
 
     // Dynamically import both services
