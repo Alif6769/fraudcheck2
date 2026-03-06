@@ -165,10 +165,16 @@ export async function syncOrders(session, admin) {
 
     // Upsert all orders using orderName as the unique identifier
     for (const order of cleanedOrders) {
+      const {
+        fraudReport,        // eslint-disable-line @typescript-eslint/no-unused-vars
+        steadFastReport,    // eslint-disable-line @typescript-eslint/no-unused-vars
+        ...orderWithoutReports
+      } = order;
+
       await prisma.order.upsert({
-        where: { orderName: order.orderName }, // ✅ changed from orderId to orderName
-        update: order,
-        create: order,
+        where: { orderName: order.orderName },
+        create: order, // it's fine if create includes them or not
+        update: orderWithoutReports, // DO NOT overwrite existing reports
       });
     }
 
@@ -206,9 +212,9 @@ export async function syncOrders(session, admin) {
             where: { orderName: order.orderName }, // ✅ use orderName here too
             data: { fraudReport: report },
           });
-          console.log(`✅ FraudSpy synced for ${order.orderId}`);
+          console.log(`✅ FraudSpy synced for ${order.orderName}`);
         } catch (error) {
-          console.error(`❌ FraudSpy failed for ${order.orderId}:`, error.message);
+          console.error(`❌ FraudSpy failed for ${order.orderName}:`, error.message);
         }
       }
     }
@@ -223,9 +229,9 @@ export async function syncOrders(session, admin) {
             where: { orderName: order.orderName }, // ✅ use orderName here too
             data: { steadFastReport: report },
           });
-          console.log(`✅ Steadfast synced for ${order.orderId}`);
+          console.log(`✅ Steadfast synced for ${order.orderName}`);
         } catch (error) {
-          console.error(`❌ Steadfast failed for ${order.orderId}:`, error.message);
+          console.error(`❌ Steadfast failed for ${order.orderName}:`, error.message);
         }
       }
     }

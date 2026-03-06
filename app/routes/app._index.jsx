@@ -236,7 +236,7 @@ export default function Index() {
                         <div
                           style={{
                             maxWidth: "100%",
-                            maxHeight: "150px",
+                            maxHeight: "80px",
                             overflow: "auto",
                             whiteSpace: "pre-wrap",
                             background: "#f5f5f5",
