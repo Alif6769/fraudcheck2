@@ -176,10 +176,7 @@ export async function syncOrders(session, admin) {
       where: {
         shop: session.shop,
         source: 'web',
-        OR: [
-          { fraudReport: null },
-          // { steadFastReport: null }
-        ],
+        fraudReport: null,
         NOT: { shippingPhone: null }
       },
       orderBy: { orderTime: 'desc' },
@@ -190,10 +187,7 @@ export async function syncOrders(session, admin) {
       where: {
         shop: session.shop,
         source: 'web',
-        OR: [
-          // { fraudReport: null },
-          { steadFastReport: null }
-        ],
+        steadFastReport: null,
         NOT: { shippingPhone: null }
       },
       orderBy: { orderTime: 'desc' },

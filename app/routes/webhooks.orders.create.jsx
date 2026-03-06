@@ -1,5 +1,7 @@
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { fetchFraudReport } from './services/fraudspy.service';
+import { fetchSteadfastReport } from './services/steadfast.service';
 
 export const action = async ({ request }) => {
   try {
@@ -74,41 +76,69 @@ export const action = async ({ request }) => {
     // Determine source – Shopify uses `source_name`
     const source = payload.source_name || null;
 
-    // If it's a web order with a shipping phone, fetch both reports
     if (source === 'web' && shippingPhone) {
-      // Import services dynamically (or statically at top)
-      const { fetchFraudReport } = await import('../services/fraudspy.service');
-      const { fetchSteadfastReport } = await import('../services/steadfast.service');
+      // Check what reports we already have for this order
+      const existing = await prisma.order.findUnique({
+        where: { orderName: orderData.orderName },
+        select: { fraudReport: true, steadFastReport: true },
+      });
 
-      // Run both requests concurrently; one failure doesn't stop the other
-      const [fraudResult, steadfastResult] = await Promise.allSettled([
-        fetchFraudReport(shippingPhone),
-        fetchSteadfastReport(shippingPhone),
-      ]);
+      // Prepare fetch tasks only for missing reports
+      const fetchTasks = [];
 
+      if (!existing?.fraudReport) {
+        fetchTasks.push(
+          fetchFraudReport(shippingPhone)
+            .then(result => ({ type: 'fraud', result }))
+            .catch(error => ({ type: 'fraud', error: error.message }))
+        );
+      } else {
+        console.log(`⏭️ FraudSpy report already exists for order ${orderId}, skipping`);
+      }
+
+      if (!existing?.steadFastReport) {
+        fetchTasks.push(
+          fetchSteadfastReport(shippingPhone)
+            .then(result => ({ type: 'steadfast', result }))
+            .catch(error => ({ type: 'steadfast', error: error.message }))
+        );
+      } else {
+        console.log(`⏭️ Steadfast report already exists for order ${orderId}, skipping`);
+      }
+
+      // Prepare update object – start with source only
       const updateData = { source };
 
-      if (fraudResult.status === 'fulfilled') {
-        updateData.fraudReport = fraudResult.value;
-        console.log(`✅ FraudSpy report saved for order ${orderId}`);
+      if (fetchTasks.length > 0) {
+        // Run all needed fetches concurrently
+        const results = await Promise.all(fetchTasks);
+
+        for (const res of results) {
+          if (res.error) {
+            // Fetch failed for this service
+            console.error(`❌ ${res.type === 'fraud' ? 'FraudSpy' : 'Steadfast'} failed for order ${orderId}:`, res.error);
+          } else {
+            // Success – add report to updateData
+            if (res.type === 'fraud') {
+              updateData.fraudReport = res.result;
+              console.log(`✅ FraudSpy report saved for order ${orderId}`);
+            } else {
+              updateData.steadFastReport = res.result;
+              console.log(`✅ Steadfast report saved for order ${orderId}`);
+            }
+          }
+        }
       } else {
-        console.error(`❌ FraudSpy failed for order ${orderId}:`, fraudResult.reason?.message);
+        console.log(`⏭️ Both reports already exist for order ${orderId}, no API calls made`);
       }
 
-      if (steadfastResult.status === 'fulfilled') {
-        updateData.steadFastReport = steadfastResult.value;
-        console.log(`✅ Steadfast report saved for order ${orderId}`);
-      } else {
-        console.error(`❌ Steadfast failed for order ${orderId}:`, steadfastResult.reason?.message);
-      }
-
-      // Update the order with any reports we obtained
+      // Update the order with any new reports (and source)
       await prisma.order.update({
         where: { orderName: orderData.orderName },
         data: updateData,
       });
     } else {
-      // No reports – just store the source
+      // Not a web order or no shipping phone – just store the source
       await prisma.order.update({
         where: { orderName: orderData.orderName },
         data: { source },
