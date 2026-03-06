@@ -7,6 +7,8 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 import { DeliveryMethod } from "@shopify/shopify-app-react-router/server";
+import { fetchFraudReport } from './services/fraudspy.service';
+import { fetchSteadfastReport } from './services/steadfast.service';
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -170,12 +172,26 @@ export async function syncOrders(session, admin) {
       });
     }
 
-    const ordersNeedingReports = await prisma.order.findMany({
+    const ordersNeedingFSReports = await prisma.order.findMany({
       where: {
         shop: session.shop,
         source: 'web',
         OR: [
           { fraudReport: null },
+          // { steadFastReport: null }
+        ],
+        NOT: { shippingPhone: null }
+      },
+      orderBy: { orderTime: 'desc' },
+      take: 10,
+    });
+
+    const ordersNeedingSteadFastReports = await prisma.order.findMany({
+      where: {
+        shop: session.shop,
+        source: 'web',
+        OR: [
+          // { fraudReport: null },
           { steadFastReport: null }
         ],
         NOT: { shippingPhone: null }
@@ -184,10 +200,8 @@ export async function syncOrders(session, admin) {
       take: 10,
     });
 
-    const { fetchFraudReport } = await import('./services/fraudspy.service');
-    const { fetchSteadfastReport } = await import('./services/steadfast.service');
 
-    for (const order of ordersNeedingReports) {
+    for (const order of ordersNeedingFSReports) {
       const phone = order.shippingPhone;
 
       // FraudSpy
@@ -203,7 +217,10 @@ export async function syncOrders(session, admin) {
           console.error(`❌ FraudSpy failed for ${order.orderId}:`, error.message);
         }
       }
+    }
 
+    for (const order of ordersNeedingSteadFastReports) {
+      const phone = order.shippingPhone;
       // Steadfast
       if (!order.steadFastReport) {
         try {

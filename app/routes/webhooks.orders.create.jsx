@@ -51,7 +51,7 @@ export const action = async ({ request }) => {
     // Build order data – including the new orderName field
     const orderData = {
       orderId,
-      orderName: payload.name,        // ✅ Added this line
+      orderName: payload.name,        // ✅ this is correct
       shop,
       orderTime,
       customerId,
@@ -66,33 +66,51 @@ export const action = async ({ request }) => {
     };
 
     await prisma.order.upsert({
-      where: { orderName },
+      where: { orderName: orderData.orderName },   // ✅ FIXED
       update: orderData,
       create: orderData,
     });
 
-    // Determine source – Shopify uses `source_name` (e.g., "web", "pos", "admin")
+    // Determine source – Shopify uses `source_name`
     const source = payload.source_name || null;
 
-    // Only fetch fraud report if source is "web" and we have a shipping phone
+    // If it's a web order with a shipping phone, fetch both reports
     if (source === 'web' && shippingPhone) {
-      try {
-        const { fetchFraudReport } = await import('../services/fraudspy.service');
-        const report = await fetchFraudReport(shippingPhone);
-        // Update the order with the report
-        await prisma.order.update({
-          where: { orderId },
-          data: { fraudReport: report, source },
-        });
-        console.log(`✅ Fraud report saved for order ${orderId}`);
-      } catch (error) {
-        console.error(`❌ Fraud report failed for order ${orderId}:`, error.message);
-        // Optionally store error in a separate field or just log
+      // Import services dynamically (or statically at top)
+      const { fetchFraudReport } = await import('../services/fraudspy.service');
+      const { fetchSteadfastReport } = await import('../services/steadfast.service');
+
+      // Run both requests concurrently; one failure doesn't stop the other
+      const [fraudResult, steadfastResult] = await Promise.allSettled([
+        fetchFraudReport(shippingPhone),
+        fetchSteadfastReport(shippingPhone),
+      ]);
+
+      const updateData = { source };
+
+      if (fraudResult.status === 'fulfilled') {
+        updateData.fraudReport = fraudResult.value;
+        console.log(`✅ FraudSpy report saved for order ${orderId}`);
+      } else {
+        console.error(`❌ FraudSpy failed for order ${orderId}:`, fraudResult.reason?.message);
       }
-    } else {
-      // Still store the source even if no report
+
+      if (steadfastResult.status === 'fulfilled') {
+        updateData.steadFastReport = steadfastResult.value;
+        console.log(`✅ Steadfast report saved for order ${orderId}`);
+      } else {
+        console.error(`❌ Steadfast failed for order ${orderId}:`, steadfastResult.reason?.message);
+      }
+
+      // Update the order with any reports we obtained
       await prisma.order.update({
-        where: { orderId },
+        where: { orderName: orderData.orderName },
+        data: updateData,
+      });
+    } else {
+      // No reports – just store the source
+      await prisma.order.update({
+        where: { orderName: orderData.orderName },
         data: { source },
       });
     }

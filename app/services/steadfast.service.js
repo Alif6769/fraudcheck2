@@ -51,8 +51,18 @@ async function loginAndGetSession() {
  * Normalize phone number: keep only last 11 digits.
  */
 function normalizePhone(phone) {
+  // Remove all non‑digit characters
   const digits = String(phone).replace(/\D/g, '');
-  return digits.slice(-11);
+  
+  // Take the last 11 digits (or all if less than 11)
+  let normalized = digits.slice(-11);
+  
+  // If we end up with exactly 10 digits, prepend a '0'
+  if (normalized.length === 10) {
+    normalized = '0' + normalized;
+  }
+  
+  return normalized;
 }
 
 /**
