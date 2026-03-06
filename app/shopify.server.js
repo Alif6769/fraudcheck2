@@ -178,27 +178,25 @@ export async function syncOrders(session, admin) {
       });
     }
 
-    const ordersNeedingFSReports = await prisma.order.findMany({
+    // Step 1: get the latest 10 web orders for this shop
+    const latestOrders = await prisma.order.findMany({
       where: {
         shop: session.shop,
         source: 'web',
-        fraudReport: null,
-        NOT: { shippingPhone: null }
       },
       orderBy: { orderTime: 'desc' },
       take: 10,
     });
 
-    const ordersNeedingSteadFastReports = await prisma.order.findMany({
-      where: {
-        shop: session.shop,
-        source: 'web',
-        steadFastReport: null,
-        NOT: { shippingPhone: null }
-      },
-      orderBy: { orderTime: 'desc' },
-      take: 10,
-    });
+    // Step 2: from those 10, filter for your conditions in memory
+
+    const ordersNeedingFSReports = latestOrders.filter((order) => 
+      order.fraudReport === null && order.shippingPhone !== null
+    );
+
+    const ordersNeedingSteadFastReports = latestOrders.filter((order) =>
+      order.steadFastReport === null && order.shippingPhone !== null
+    );
 
 
     for (const order of ordersNeedingFSReports) {
