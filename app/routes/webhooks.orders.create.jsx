@@ -1,7 +1,7 @@
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { fetchFraudReport } from './services/fraudspy.service';
-import { fetchSteadfastReport } from './services/steadfast.service';
+import { fetchFraudReport } from '../services/fraudspy.service';
+import { fetchSteadfastReport } from '../services/steadfast.service';
 
 export const action = async ({ request }) => {
   try {
