@@ -67,16 +67,12 @@ export const action = async ({ request }) => {
       products,
     };
 
-    const {
-      fraudReport,        // eslint-disable-line @typescript-eslint/no-unused-vars
-      steadFastReport,    // eslint-disable-line @typescript-eslint/no-unused-vars
-      ...orderWithoutReports
-    } = order;
+    const { fraudReport, steadFastReport, ...orderWithoutReports } = orderData;
 
     await prisma.order.upsert({
-      where: { orderName: order.orderName },
-      create: order, // it's fine if create includes them or not
-      update: orderWithoutReports, // DO NOT overwrite existing reports
+      where: { orderName: orderData.orderName },
+      create: orderData,
+      update: orderWithoutReports,
     });
 
     // Determine source – Shopify uses `source_name`
