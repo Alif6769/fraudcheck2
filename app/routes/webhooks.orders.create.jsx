@@ -66,7 +66,7 @@ export const action = async ({ request }) => {
     };
 
     await prisma.order.upsert({
-      where: { orderId },
+      where: { orderName },
       update: orderData,
       create: orderData,
     });
