@@ -186,7 +186,7 @@ export default function Index() {
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
                   <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
-                  <th style={{ ...thStyle, width: "400px" }}>Steadfast Report</th>   {/* new */}
+                  <th style={{ ...thStyle, width: "180px" }}>Steadfast Report</th>   {/* new */}
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>

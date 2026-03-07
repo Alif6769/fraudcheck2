@@ -23,6 +23,9 @@ function normalizePhone(raw) {
   if (digits.length === 10) {
     return '0' + digits;
   }
+  if (digits.length === 14 && digits.startsWith('880')) {
+    return '0' + digits.slice(4);
+  }
   // if it starts with 01 but length != 11, treat as invalid
   return null;
 }
