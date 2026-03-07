@@ -52,5 +52,6 @@ model Order {
   source          String?   // e.g., "web", "pos", etc.
   fraudReport     String?   // full text report from FraudSpy
   steadFastReport String?
-  realName        String?
+  realName1       String?
+  realName2       String?
 }

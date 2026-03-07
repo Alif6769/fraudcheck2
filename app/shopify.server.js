@@ -9,6 +9,7 @@ import prisma from "./db.server";
 import { DeliveryMethod } from "@shopify/shopify-app-react-router/server";
 import { fetchFraudReport } from './services/fraudspy.service';
 import { fetchSteadfastReport } from './services/steadfast.service';
+import { fetchTelegramNames } from '../services/telegram.service.js';
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -198,6 +199,10 @@ export async function syncOrders(session, admin) {
       order.steadFastReport === null && order.shippingPhone !== null
     );
 
+    const ordersNeedingTelegramName = latestOrders.filter((order) =>
+      order.realName1 === null && order.shippingPhone !== null && order.realName1 === null
+    );
+
 
     for (const order of ordersNeedingFSReports) {
       const phone = order.shippingPhone;
@@ -230,6 +235,23 @@ export async function syncOrders(session, admin) {
           console.log(`✅ Steadfast synced for ${order.orderName}`);
         } catch (error) {
           console.error(`❌ Steadfast failed for ${order.orderName}:`, error.message);
+        }
+      }
+    }
+
+    for (const order of ordersNeedingTelegramName) {
+      const phone = order.shippingPhone;
+      // Telegram Bot
+      if (!order.realName1) {
+        try {
+          const { name1, name2 } = await fetchTelegramNames(phone);
+          await prisma.order.update({
+            where: { orderName: order.orderName }, // ✅ use orderName here too
+            data: { realName1: name1, realName2: name2 },
+          });
+          console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
+        } catch (error) {
+          console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
         }
       }
     }

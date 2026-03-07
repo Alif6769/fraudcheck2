@@ -185,6 +185,7 @@ export default function Index() {
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
+                  <th style={{ ...thStyle, width: "150px" }}>Real Name</th>
                   <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
                   <th style={{ ...thStyle, width: "180px" }}>Steadfast Report</th>   {/* new */}
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
@@ -206,6 +207,12 @@ export default function Index() {
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>
                       {formatCustomerName(order.firstName, order.lastName)}
+                    </td>
+
+                    <td style={tdStyle}>
+                      Real name1: {order.realName1 || "-"}
+                      <br />
+                      Real name2: {order.realName2 || "-"}
                     </td>
 
                     {/* Fraud Report Cell */}

@@ -2,6 +2,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { fetchFraudReport } from '../services/fraudspy.service';
 import { fetchSteadfastReport } from '../services/steadfast.service';
+import { fetchTelegramNames } from '../services/telegram.service.js';
 
 export const action = async ({ request }) => {
   try {
@@ -82,7 +83,7 @@ export const action = async ({ request }) => {
       // Check what reports we already have for this order
       const existing = await prisma.order.findUnique({
         where: { orderName: orderData.orderName },
-        select: { fraudReport: true, steadFastReport: true },
+        select: { fraudReport: true, steadFastReport: true, realName1: true, realName2: true },
       });
 
       // Prepare fetch tasks only for missing reports
@@ -108,30 +109,41 @@ export const action = async ({ request }) => {
         console.log(`⏭️ Steadfast report already exists for order ${orderId}, skipping`);
       }
 
+      if (!existing?.realName1) {
+        fetchTasks.push(
+          fetchTelegramNames(shippingPhone)
+            .then(result => ({ type: 'telegram', result }))
+            .catch(error => ({ type: 'telegram', error: error.message }))
+        );
+      } else {
+        console.log(`⏭️ Telegram report already exists for order ${orderId}, skipping`);
+      }
+
       // Prepare update object – start with source only
       const updateData = { source };
 
       if (fetchTasks.length > 0) {
-        // Run all needed fetches concurrently
         const results = await Promise.all(fetchTasks);
 
         for (const res of results) {
           if (res.error) {
-            // Fetch failed for this service
-            console.error(`❌ ${res.type === 'fraud' ? 'FraudSpy' : 'Steadfast'} failed for order ${orderId}:`, res.error);
+            console.error(`❌ ${res.type === 'fraud' ? 'FraudSpy' : res.type === 'steadfast' ? 'Steadfast' : 'Telegram'} failed for order ${orderId}:`, res.error);
           } else {
-            // Success – add report to updateData
             if (res.type === 'fraud') {
               updateData.fraudReport = res.result;
               console.log(`✅ FraudSpy report saved for order ${orderId}`);
-            } else {
+            } else if (res.type === 'steadfast') {
               updateData.steadFastReport = res.result;
               console.log(`✅ Steadfast report saved for order ${orderId}`);
+            } else if (res.type === 'telegram') {
+              updateData.realName1 = res.result.name1;
+              updateData.realName2 = res.result.name2;
+              console.log(`✅ Telegram names saved for order ${orderId}: ${res.result.name1} / ${res.result.name2}`);
             }
           }
         }
       } else {
-        console.log(`⏭️ Both reports already exist for order ${orderId}, no API calls made`);
+        console.log(`⏭️ All reports (FraudSpy, Steadfast, Telegram) already exist for order ${orderId}, no API calls made`);
       }
 
       // Update the order with any new reports (and source)
