@@ -90,16 +90,26 @@ export async function fetchTelegramNames(phone) {
   await ensureClient();
 
   const bot = await client.getEntity(TRUECALLER_BOT);
+  console.log(`📤 Sending phone ${normalized} to bot ${bot.id}`);
   await client.sendMessage(bot, { message: normalized });
 
   return new Promise((resolve, reject) => {
+    // Set a timeout
     const timeout = setTimeout(() => {
       client.removeEventHandler(handler);
-      reject(new Error('Telegram bot response timeout (30s)'));
-    }, 30000);
+      reject(new Error('Telegram bot response timeout (60s)'));
+    }, 60000);
 
+    // Define the handler
     const handler = (msg) => {
-      if (msg.senderId?.toString() === bot.id.toString()) {
+      // Only process messages from our target bot
+      if (msg.senderId?.toString() !== bot.id.toString()) return;
+
+      // Log full message for debugging
+      console.log(`📨 Bot message (edited: ${msg.edited ? 'yes' : 'no'}):`, msg.message);
+
+      // Check if this message contains a name (i.e., not just "searching")
+      if (msg.message.includes('**Name:**')) {
         clearTimeout(timeout);
         client.removeEventHandler(handler);
         try {
@@ -108,8 +118,12 @@ export async function fetchTelegramNames(phone) {
         } catch (e) {
           reject(e);
         }
+      } else {
+        console.log(`⏳ Bot message does not contain name yet, still waiting...`);
       }
     };
+
+    // Attach the handler
     client.addEventHandler(handler);
   });
 }
