@@ -133,7 +133,7 @@ export default function Index() {
   }, [fetcher.data]);
 
   return (
-    <s-page heading="Orders Dashboard">
+    <s-page heading="Orders Dashboard" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
         {/* Sync Button and messages – unchanged */}
         <button
