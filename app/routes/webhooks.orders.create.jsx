@@ -1,7 +1,7 @@
 // app/routes/webhooks.orders.create.jsx
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { orderQueue, ORDER_QUEUE_NAME } from "../queues/orderQueue.server";
+// import { orderQueue, ORDER_QUEUE_NAME } from "../queues/orderQueue.server";
 
 export const action = async ({ request }) => {
   try {
@@ -10,6 +10,8 @@ export const action = async ({ request }) => {
     console.log(`📦 Order created webhook received from ${shop}`);
     console.log(`Order ID: ${payload.id}`);
     console.log(`Order number: #${payload.order_number}`);
+
+    const { orderQueue } = await import("../queues/orderQueue.server");
 
     const orderId = payload.id.toString();
     const orderTime = new Date(payload.created_at);
