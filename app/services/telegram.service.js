@@ -4,7 +4,7 @@ import { StringSession } from "telegram/sessions/index.js"; // adjust if needed
 const apiId = Number(process.env.TELEGRAM_API_ID) || 35644061;
 const apiHash = process.env.TELEGRAM_API_HASH || "dd92e4d28a16471b7bf8a1ec7cbdea70";
 const sessionString = process.env.TELEGRAM_SESSION || "";
-const TRUECALLER_BOT = process.env.TELEGRAM_BOT;
+const TRUECALLER_BOT = process.env.TELEGRAM_BOT || "";
 
 let client = null;
 let connected = false;
