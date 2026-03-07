@@ -83,49 +83,42 @@ function extractNames(text) {
  */
 export async function fetchTelegramNames(phone) {
   const normalized = normalizePhone(phone);
-  if (!normalized) {
-    throw new Error(`Invalid phone number: ${phone}`);
-  }
+  if (!normalized) throw new Error(`Invalid phone number: ${phone}`);
 
   await ensureClient();
 
   const bot = await client.getEntity(TRUECALLER_BOT);
-  console.log(`📤 Sending phone ${normalized} to bot ${bot.id}`);
-  await client.sendMessage(bot, { message: normalized });
 
-  return new Promise((resolve, reject) => {
-    // Set a timeout
+  // Create promise *before* sending so handler is ready
+  const responsePromise = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       client.removeEventHandler(handler);
       reject(new Error('Telegram bot response timeout (60s)'));
     }, 60000);
 
-    // Define the handler
     const handler = (msg) => {
-      // Only process messages from our target bot
       if (msg.senderId?.toString() !== bot.id.toString()) return;
-
-      // Log full message for debugging
-      console.log(`📨 Bot message (edited: ${msg.edited ? 'yes' : 'no'}):`, msg.message);
-
-      // Check if this message contains a name (i.e., not just "searching")
+      console.log(`📨 Bot message: ${msg.message}`);
       if (msg.message.includes('**Name:**')) {
         clearTimeout(timeout);
         client.removeEventHandler(handler);
         try {
-          const names = extractNames(msg.message);
-          resolve(names);
+          resolve(extractNames(msg.message));
         } catch (e) {
           reject(e);
         }
       } else {
-        console.log(`⏳ Bot message does not contain name yet, still waiting...`);
+        console.log(`⏳ Bot message does not contain name yet, waiting...`);
       }
     };
-
-    // Attach the handler
     client.addEventHandler(handler);
   });
+
+  // Send message after handler is attached
+  console.log(`📤 Sending phone ${normalized} to bot ${bot.id}`);
+  await client.sendMessage(bot, { message: normalized });
+
+  return responsePromise;
 }
 
 /**
