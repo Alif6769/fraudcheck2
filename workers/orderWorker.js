@@ -47,13 +47,13 @@ const worker = new Worker(
             .catch(error => ({ type: 'steadfast', error: error.message }))
         );
       }
-      if (telegramEnabled) {
-        tasks.push(
-          fetchTelegramNames(shippingPhone)
-            .then(result => ({ type: 'telegram', result }))
-            .catch(error => ({ type: 'telegram', error: error.message }))
-        );
-      }
+    //   if (telegramEnabled) {
+    //     tasks.push(
+    //       fetchTelegramNames(shippingPhone)
+    //         .then(result => ({ type: 'telegram', result }))
+    //         .catch(error => ({ type: 'telegram', error: error.message }))
+    //     );
+    //   }
 
       const results = await Promise.allSettled(tasks);
 

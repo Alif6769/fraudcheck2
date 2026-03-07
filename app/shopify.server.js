@@ -259,18 +259,18 @@ export async function syncOrders(
     }
 
     // 9. Process Telegram
-    for (const order of ordersNeedingTelegramName) {
-      try {
-        const { name1, name2 } = await fetchTelegramNames(order.shippingPhone);
-        await prisma.order.update({
-          where: { orderName: order.orderName },
-          data: { realName1: name1, realName2: name2 },
-        });
-        console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
-      } catch (error) {
-        console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
-      }
-    }
+    // for (const order of ordersNeedingTelegramName) {
+    //   try {
+    //     const { name1, name2 } = await fetchTelegramNames(order.shippingPhone);
+    //     await prisma.order.update({
+    //       where: { orderName: order.orderName },
+    //       data: { realName1: name1, realName2: name2 },
+    //     });
+    //     console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
+    //   } catch (error) {
+    //     console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
+    //   }
+    // }
 
     console.log(`✅ Synced ${cleanedOrders.length} orders for ${session.shop}`);
     return cleanedOrders.length;

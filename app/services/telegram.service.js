@@ -1,18 +1,15 @@
 import { TelegramClient } from "telegram";
-import { StringSession } from "telegram/sessions/index.js"; // adjust if needed
+import { StringSession } from "telegram/sessions/index.js";
 
 const apiId = Number(process.env.TELEGRAM_API_ID) || 35644061;
 const apiHash = process.env.TELEGRAM_API_HASH || "dd92e4d28a16471b7bf8a1ec7cbdea70";
 const sessionString = process.env.TELEGRAM_SESSION || "";
-const TRUECALLER_BOT = process.env.TELEGRAM_BOT || "";
+const TRUECALLER_BOT = process.env.TELEGRAM_BOT || "TrueCalleRobot";
 
 let client = null;
 let connected = false;
 let initPromise = null;
 
-/**
- * Ensure Telegram client is connected (singleton)
- */
 async function ensureClient() {
   if (connected) return client;
   if (initPromise) return initPromise;
@@ -24,6 +21,16 @@ async function ensureClient() {
         connectionRetries: 5,
       });
       await client.connect();
+      
+      // Start the update loop – try run() first, then fallback to start()
+      if (typeof client.run === 'function') {
+        client.run().catch(err => console.error('❌ Telegram run loop error:', err));
+      } else if (typeof client.start === 'function') {
+        client.start().catch(err => console.error('❌ Telegram start error:', err));
+      } else {
+        console.warn('⚠️ No update loop method found. Updates may not be received.');
+      }
+      
       connected = true;
       console.log("✅ Telegram client connected");
       return client;
@@ -37,10 +44,6 @@ async function ensureClient() {
   return initPromise;
 }
 
-/**
- * Normalize phone number to format expected by the bot (+880...)
- * Mimics the Python script's normalize_phone()
- */
 function normalizePhone(raw) {
   if (!raw) return null;
   const phone = String(raw).trim().replace(/\s+/g, '');
@@ -54,15 +57,11 @@ function normalizePhone(raw) {
   } else if (digits.length === 13 && digits.startsWith('880')) {
     return "+" + digits;
   } else if (phone.startsWith('+')) {
-    // already has +, ensure digits only (keep as is)
     return phone;
   }
   return null;
 }
 
-/**
- * Extract names from the bot's response text using regex.
- */
 function extractNames(text) {
   const nameRegex = /\*\*Name:\*\*\s*`([^`]+)`/g;
   const names = [];
@@ -76,11 +75,6 @@ function extractNames(text) {
   };
 }
 
-/**
- * Public function: fetch names for a phone number via Telegram.
- * @param {string} phone - raw phone number
- * @returns {Promise<{name1: string, name2: string}>}
- */
 export async function fetchTelegramNames(phone) {
   const normalized = normalizePhone(phone);
   if (!normalized) throw new Error(`Invalid phone number: ${phone}`);
@@ -89,7 +83,6 @@ export async function fetchTelegramNames(phone) {
 
   const bot = await client.getEntity(TRUECALLER_BOT);
 
-  // Create promise *before* sending so handler is ready
   const responsePromise = new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
       client.removeEventHandler(handler);
@@ -114,35 +107,8 @@ export async function fetchTelegramNames(phone) {
     client.addEventHandler(handler);
   });
 
-  // Send message after handler is attached
   console.log(`📤 Sending phone ${normalized} to bot ${bot.id}`);
   await client.sendMessage(bot, { message: normalized });
 
   return responsePromise;
-}
-
-/**
- * Optional: raw response if you need the full text
- */
-export async function fetchTelegramRaw(phone) {
-  const normalized = normalizePhone(phone);
-  if (!normalized) throw new Error(`Invalid phone: ${phone}`);
-  await ensureClient();
-  const bot = await client.getEntity(TRUECALLER_BOT);
-  await client.sendMessage(bot, { message: normalized });
-
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      client.removeEventHandler(handler);
-      reject(new Error('Timeout'));
-    }, 30000);
-    const handler = (msg) => {
-      if (msg.senderId?.toString() === bot.id.toString()) {
-        clearTimeout(timeout);
-        client.removeEventHandler(handler);
-        resolve(msg.message);
-      }
-    };
-    client.addEventHandler(handler);
-  });
 }
