@@ -55,3 +55,14 @@ model Order {
   realName1       String?
   realName2       String?
 }
+
+model ShopSettings {
+  shop             String @id   // e.g. "myshop.myshopify.com"
+  fetchLimit       Int    @default(100)
+  reportLimit      Int    @default(10)
+  fraudspyEnabled  Boolean @default(true)
+  steadfastEnabled Boolean @default(true)
+  telegramEnabled  Boolean @default(true)
+  allSources       Boolean @default(false)
+  updatedAt        DateTime @updatedAt
+}

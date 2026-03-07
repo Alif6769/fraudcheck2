@@ -3,7 +3,7 @@ import {
   useFetcher,
   useRevalidator,
 } from "react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 /* =========================
    HELPERS
@@ -81,6 +81,13 @@ export default function OrdersDashboard() {
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
 
+  // State for form inputs
+  const [fetchLimit, setFetchLimit] = useState(100);
+  const [reportLimit, setReportLimit] = useState(10);
+  const [fraudspyEnabled, setFraudspyEnabled] = useState(true);
+  const [steadfastEnabled, setSteadfastEnabled] = useState(true);
+  const [allSources, setAllSources] = useState(false);
+
   useEffect(() => {
     if (fetcher.data?.success) {
       revalidator.revalidate();
@@ -90,22 +97,78 @@ export default function OrdersDashboard() {
   return (
     <s-page heading="Orders Dashboard" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
-        {/* Sync Button and messages – unchanged */}
-        <button
-          onClick={() => fetcher.submit({}, { method: "post" })}
-          disabled={fetcher.state === "submitting"}
-          style={{
-            padding: "8px 16px",
-            marginBottom: "15px",
-            cursor: "pointer",
-            background: "#008060",
-            color: "white",
-            border: "none",
-            borderRadius: "6px",
-          }}
-        >
-          {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
-        </button>
+        {/* Form with controls */}
+        <fetcher.Form method="post">
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
+            <label>
+              Pull orders (max):
+              <input
+                type="number"
+                name="fetchLimit"
+                value={fetchLimit}
+                onChange={(e) => setFetchLimit(e.target.value)}
+                min="1"
+                max="250"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              Reports per service:
+              <input
+                type="number"
+                name="reportLimit"
+                value={reportLimit}
+                onChange={(e) => setReportLimit(e.target.value)}
+                min="0"
+                max="50"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="fraudspyEnabled"
+                checked={fraudspyEnabled}
+                onChange={(e) => setFraudspyEnabled(e.target.checked)}
+              />
+              Enable FraudSpy
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="steadfastEnabled"
+                checked={steadfastEnabled}
+                onChange={(e) => setSteadfastEnabled(e.target.checked)}
+              />
+              Enable Steadfast
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="allSources"
+                checked={allSources}
+                onChange={(e) => setAllSources(e.target.checked)}
+              />
+              Run reports on all sources
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={fetcher.state === "submitting"}
+            style={{
+              padding: "8px 16px",
+              marginBottom: "15px",
+              cursor: "pointer",
+              background: "#008060",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+            }}
+          >
+            {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
+          </button>
+        </fetcher.Form>
 
         {fetcher.data?.success && (
           <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
@@ -136,13 +199,13 @@ export default function OrdersDashboard() {
             >
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: "50px" }}>Risk</th> {/* new column */}
+                  <th style={{ ...thStyle, width: "50px" }}>Risk</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
                   <th style={{ ...thStyle, width: "150px" }}>Real Name</th>
                   <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
-                  <th style={{ ...thStyle, width: "180px" }}>Steadfast Report</th>   {/* new */}
+                  <th style={{ ...thStyle, width: "180px" }}>Steadfast Report</th>
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
@@ -153,24 +216,19 @@ export default function OrdersDashboard() {
               <tbody>
                 {orders.map((order) => (
                   <tr key={order.id}>
-                    {/* Risk Indicator */}
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
                       {getRiskIndicator(order.fraudReport, order.shippingAddress)}
                     </td>
-
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>
                       {formatCustomerName(order.firstName, order.lastName)}
                     </td>
-
                     <td style={tdStyle}>
                       Real name1: {order.realName1 || "-"}
                       <br />
                       Real name2: {order.realName2 || "-"}
                     </td>
-
-                    {/* Fraud Report Cell */}
                     <td style={tdStyle}>
                       {order.fraudReport ? (
                         <div
@@ -192,7 +250,6 @@ export default function OrdersDashboard() {
                         "-"
                       )}
                     </td>
-
                     <td style={tdStyle}>
                       {order.steadFastReport ? (
                         <div
@@ -214,13 +271,10 @@ export default function OrdersDashboard() {
                         "-"
                       )}
                     </td>
-
                     <td style={tdStyle}>{order.shippingPhone || "-"}</td>
                     <td style={tdStyle}>{getDhakaStatus(order.shippingAddress)}</td>
                     <td style={tdStyle}>{order.totalPrice || "0"}</td>
                     <td style={tdStyle}>{order.shippingFee || "0"}</td>
-
-                    {/* Products Cell */}
                     <td style={tdStyle}>
                       {Array.isArray(order.products) && order.products.length > 0 ? (
                         order.products.map((product, index) => (

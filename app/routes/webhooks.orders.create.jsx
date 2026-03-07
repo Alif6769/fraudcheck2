@@ -1,20 +1,19 @@
+// app/routes/webhooks.orders.create.jsx
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { fetchFraudReport } from '../services/fraudspy.service';
-import { fetchSteadfastReport } from '../services/steadfast.service';
-import { fetchTelegramNames } from '../services/telegram.service.js';
+import { orderQueue, ORDER_QUEUE_NAME } from "../queues/orderQueue.server";
 
 export const action = async ({ request }) => {
   try {
-    const { topic, shop, payload, admin } = await authenticate.webhook(request);
-    
+    const { topic, shop, payload } = await authenticate.webhook(request);
+
     console.log(`📦 Order created webhook received from ${shop}`);
     console.log(`Order ID: ${payload.id}`);
     console.log(`Order number: #${payload.order_number}`);
 
     const orderId = payload.id.toString();
     const orderTime = new Date(payload.created_at);
-    
+
     // Customer details
     const customerId = payload.customer?.id?.toString() || null;
     const firstName = payload.customer?.first_name || null;
@@ -51,10 +50,10 @@ export const action = async ({ request }) => {
       sku: item.sku,
     }));
 
-    // Build order data – including the new orderName field
+    // Build order data
     const orderData = {
       orderId,
-      orderName: payload.name,        // ✅ this is correct
+      orderName: payload.name,
       shop,
       orderTime,
       customerId,
@@ -68,98 +67,49 @@ export const action = async ({ request }) => {
       products,
     };
 
-    const { fraudReport, steadFastReport, ...orderWithoutReports } = orderData;
-
+    // Upsert basic order data immediately
+    const { fraudReport, steadFastReport, realName1, realName2, ...orderWithoutReports } = orderData;
     await prisma.order.upsert({
       where: { orderName: orderData.orderName },
       create: orderData,
-      update: orderWithoutReports,
+      update: orderWithoutReports, // don't overwrite enrichment fields
     });
 
-    // Determine source – Shopify uses `source_name`
+    // Fetch the shop's current settings
+    const settings = await prisma.shopSettings.findUnique({
+      where: { shop },
+    });
+
+    // Default values if not set yet
+    const jobOptions = {
+      fraudspyEnabled: settings?.fraudspyEnabled ?? true,
+      steadfastEnabled: settings?.steadfastEnabled ?? true,
+      // telegramEnabled: settings?.telegramEnabled ?? true,
+      allSources: settings?.allSources ?? false,
+    };
+
+    // Enqueue job with options
+    await orderQueue.add("process-order", {
+      orderName: orderData.orderName,
+      orderId: orderData.orderId,
+      shop,
+      shippingPhone: orderData.shippingPhone,
+      source: payload.source_name || null,
+      ...jobOptions,
+    });
+
     const source = payload.source_name || null;
 
-    if (source === 'web' && shippingPhone) {
-      // Check what reports we already have for this order
-      const existing = await prisma.order.findUnique({
-        where: { orderName: orderData.orderName },
-        select: { fraudReport: true, steadFastReport: true, realName1: true, realName2: true },
-      });
+    // Enqueue a background job for the slow work
+    await orderQueue.add("process-order", {
+      orderName: orderData.orderName,
+      orderId: orderData.orderId,
+      shop,
+      shippingPhone,
+      source,
+    });
 
-      // Prepare fetch tasks only for missing reports
-      const fetchTasks = [];
-
-      if (!existing?.fraudReport) {
-        fetchTasks.push(
-          fetchFraudReport(shippingPhone)
-            .then(result => ({ type: 'fraud', result }))
-            .catch(error => ({ type: 'fraud', error: error.message }))
-        );
-      } else {
-        console.log(`⏭️ FraudSpy report already exists for order ${orderId}, skipping`);
-      }
-
-      if (!existing?.steadFastReport) {
-        fetchTasks.push(
-          fetchSteadfastReport(shippingPhone)
-            .then(result => ({ type: 'steadfast', result }))
-            .catch(error => ({ type: 'steadfast', error: error.message }))
-        );
-      } else {
-        console.log(`⏭️ Steadfast report already exists for order ${orderId}, skipping`);
-      }
-
-      if (!existing?.realName1) {
-        fetchTasks.push(
-          fetchTelegramNames(shippingPhone)
-            .then(result => ({ type: 'telegram', result }))
-            .catch(error => ({ type: 'telegram', error: error.message }))
-        );
-      } else {
-        console.log(`⏭️ Telegram report already exists for order ${orderId}, skipping`);
-      }
-
-      // Prepare update object – start with source only
-      const updateData = { source };
-
-      if (fetchTasks.length > 0) {
-        const results = await Promise.all(fetchTasks);
-
-        for (const res of results) {
-          if (res.error) {
-            console.error(`❌ ${res.type === 'fraud' ? 'FraudSpy' : res.type === 'steadfast' ? 'Steadfast' : 'Telegram'} failed for order ${orderId}:`, res.error);
-          } else {
-            if (res.type === 'fraud') {
-              updateData.fraudReport = res.result;
-              console.log(`✅ FraudSpy report saved for order ${orderId}`);
-            } else if (res.type === 'steadfast') {
-              updateData.steadFastReport = res.result;
-              console.log(`✅ Steadfast report saved for order ${orderId}`);
-            } else if (res.type === 'telegram') {
-              updateData.realName1 = res.result.name1;
-              updateData.realName2 = res.result.name2;
-              console.log(`✅ Telegram names saved for order ${orderId}: ${res.result.name1} / ${res.result.name2}`);
-            }
-          }
-        }
-      } else {
-        console.log(`⏭️ All reports (FraudSpy, Steadfast, Telegram) already exist for order ${orderId}, no API calls made`);
-      }
-
-      // Update the order with any new reports (and source)
-      await prisma.order.update({
-        where: { orderName: orderData.orderName },
-        data: updateData,
-      });
-    } else {
-      // Not a web order or no shipping phone – just store the source
-      await prisma.order.update({
-        where: { orderName: orderData.orderName },
-        data: { source },
-      });
-    }
-
-    console.log(`✅ Order #${payload.order_number} saved to database`);
+    console.log(`✅ Order #${payload.order_number} saved and enqueued for enrichment`);
     return new Response(null, { status: 200 });
   } catch (error) {
     console.error("❌ Webhook processing error:", error);

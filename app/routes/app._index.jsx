@@ -9,7 +9,24 @@ import OrdersDashboard from "../components/OrdersDashboard"; // ✅ import the c
 export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
-    const count = await syncOrders(session, admin);
+    const formData = await request.formData();
+
+    const options = {
+      fetchLimit: parseInt(formData.get('fetchLimit') || '100', 10),
+      reportLimit: parseInt(formData.get('reportLimit') || '10', 10),
+      fraudspyEnabled: formData.get('fraudspyEnabled') === 'on', // checkbox returns 'on' if checked
+      steadfastEnabled: formData.get('steadfastEnabled') === 'on',
+      allSources: formData.get('allSources') === 'on',
+    };
+
+    // Save settings for this shop
+    await prisma.shopSettings.upsert({
+      where: { shop: session.shop },
+      update: options,
+      create: { shop: session.shop, ...options },
+    });
+
+    const count = await syncOrders(session, admin, options);
     return new Response(
       JSON.stringify({ success: true, synced: count }),
       { status: 200, headers: { "Content-Type": "application/json" } }

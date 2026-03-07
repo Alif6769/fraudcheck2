@@ -61,6 +61,12 @@ const shopify = shopifyApp({
   
   hooks: {
     afterAuth: async ({ session, admin }) => {  // ← you MUST include `admin`
+      // Create default settings for this shop
+      await prisma.shopSettings.upsert({
+        where: { shop: session.shop },
+        update: {},
+        create: { shop: session.shop },
+      });
       console.log("✅ afterAuth hook started for", session.shop);
       try {
         // ✅ Pass BOTH session and admin
@@ -88,60 +94,72 @@ const shopify = shopifyApp({
 // ============================
 // SYNC ORDERS FUNCTION (FIXED)
 // ============================
-export async function syncOrders(session, admin) {
-  const tenDaysAgo = new Date();
-  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
-  const dateQuery = `created_at:>=${tenDaysAgo.toISOString()}`;
+export async function syncOrders(
+  session,
+  admin,
+  options = {}
+) {
+  try {
+    const {
+      fetchLimit = 100,
+      reportLimit = 10,
+      fraudspyEnabled = true,
+      steadfastEnabled = true,
+      allSources = false,
+    } = options;
 
-  const GET_ORDERS = `
-    query getOrders($query: String!) {
-      orders(first: 100, query: $query, sortKey: CREATED_AT, reverse: true) {
-        edges {
-          node {
-            id
-            name
-            sourceName
-            createdAt
-            totalPriceSet {
-              shopMoney { amount }
-            }
-            customer {
+    // 1. Fetch recent orders from Shopify
+    const tenDaysAgo = new Date();
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+    const dateQuery = `created_at:>=${tenDaysAgo.toISOString()}`;
+
+    const GET_ORDERS = `
+      query getOrders($query: String!, $first: Int!) {
+        orders(first: $first, query: $query, sortKey: CREATED_AT, reverse: true) {
+          edges {
+            node {
               id
-              firstName
-              lastName
-              defaultPhoneNumber { phoneNumber }
-            }
-            shippingAddress {
-              address1
-              city
-              country
-              phone
-            }
-            shippingLines(first: 10) {
-              edges {
-                node {
-                  originalPriceSet { shopMoney { amount } }
+              name
+              sourceName
+              createdAt
+              totalPriceSet { shopMoney { amount } }
+              customer {
+                id
+                firstName
+                lastName
+                defaultPhoneNumber { phoneNumber }
+              }
+              shippingAddress {
+                address1
+                city
+                country
+                phone
+              }
+              shippingLines(first: 10) {
+                edges {
+                  node {
+                    originalPriceSet { shopMoney { amount } }
+                  }
                 }
               }
-            }
-            lineItems(first: 20) {
-              edges {
-                node { title quantity }
+              lineItems(first: 20) {
+                edges {
+                  node { title quantity }
+                }
               }
             }
           }
         }
       }
-    }
-  `;
+    `;
 
-  try {
     const response = await admin.graphql(GET_ORDERS, {
-      variables: { query: dateQuery },
+      variables: { query: dateQuery, first: fetchLimit },
     });
     const { data } = await response.json();
     const orders = data?.orders?.edges || [];
 
+    // 2. Clean and upsert orders
     const cleanedOrders = orders.map(({ node }) => ({
       orderId: node.id,
       orderName: node.name,
@@ -164,95 +182,93 @@ export async function syncOrders(session, admin) {
       shop: session.shop,
     }));
 
-    // Upsert all orders using orderName as the unique identifier
     for (const order of cleanedOrders) {
-      const {
-        fraudReport,        // eslint-disable-line @typescript-eslint/no-unused-vars
-        steadFastReport,    // eslint-disable-line @typescript-eslint/no-unused-vars
-        ...orderWithoutReports
-      } = order;
-
+      const { fraudReport, steadFastReport, realName1, realName2, ...orderWithoutReports } = order;
       await prisma.order.upsert({
         where: { orderName: order.orderName },
-        create: order, // it's fine if create includes them or not
-        update: orderWithoutReports, // DO NOT overwrite existing reports
+        create: order,
+        update: orderWithoutReports, // preserve enrichment fields
       });
     }
 
-    // Step 1: get the latest 10 web orders for this shop
-    const latestOrders = await prisma.order.findMany({
+    // 3. Base condition for report queries
+    const baseWhere = {
+      shop: session.shop,
+      NOT: { shippingPhone: null },
+    };
+    if (!allSources) {
+      baseWhere.source = 'web';
+    }
+
+    // 4. Fetch orders needing FraudSpy
+    const ordersNeedingFSReports = fraudspyEnabled
+      ? await prisma.order.findMany({
+          where: { ...baseWhere, fraudReport: null },
+          orderBy: { orderTime: 'desc' },
+          take: reportLimit,
+        })
+      : [];
+
+    // 5. Fetch orders needing Steadfast
+    const ordersNeedingSteadFastReports = steadfastEnabled
+      ? await prisma.order.findMany({
+          where: { ...baseWhere, steadFastReport: null },
+          orderBy: { orderTime: 'desc' },
+          take: reportLimit,
+        })
+      : [];
+
+    // 6. Fetch orders needing Telegram names (always enabled for now)
+    const ordersNeedingTelegramName = await prisma.order.findMany({
       where: {
         shop: session.shop,
-        source: 'web',
+        NOT: { shippingPhone: null },
+        realName1: null,
+        realName2: null,
       },
       orderBy: { orderTime: 'desc' },
-      take: 10,
+      take: reportLimit,
     });
 
-    // Step 2: from those 10, filter for your conditions in memory
-
-    const ordersNeedingFSReports = latestOrders.filter((order) => 
-      order.fraudReport === null && order.shippingPhone !== null
-    );
-
-    const ordersNeedingSteadFastReports = latestOrders.filter((order) =>
-      order.steadFastReport === null && order.shippingPhone !== null
-    );
-
-    const ordersNeedingTelegramName = latestOrders.filter((order) =>
-      order.realName1 === null && order.shippingPhone !== null && order.realName1 === null
-    );
-
-
+    // 7. Process FraudSpy
     for (const order of ordersNeedingFSReports) {
-      const phone = order.shippingPhone;
-
-      // FraudSpy
-      if (!order.fraudReport) {
-        try {
-          const report = await fetchFraudReport(phone);
-          await prisma.order.update({
-            where: { orderName: order.orderName }, // ✅ use orderName here too
-            data: { fraudReport: report },
-          });
-          console.log(`✅ FraudSpy synced for ${order.orderName}`);
-        } catch (error) {
-          console.error(`❌ FraudSpy failed for ${order.orderName}:`, error.message);
-        }
+      try {
+        const report = await fetchFraudReport(order.shippingPhone);
+        await prisma.order.update({
+          where: { orderName: order.orderName },
+          data: { fraudReport: report },
+        });
+        console.log(`✅ FraudSpy synced for ${order.orderName}`);
+      } catch (error) {
+        console.error(`❌ FraudSpy failed for ${order.orderName}:`, error.message);
       }
     }
 
+    // 8. Process Steadfast
     for (const order of ordersNeedingSteadFastReports) {
-      const phone = order.shippingPhone;
-      // Steadfast
-      if (!order.steadFastReport) {
-        try {
-          const report = await fetchSteadfastReport(phone);
-          await prisma.order.update({
-            where: { orderName: order.orderName }, // ✅ use orderName here too
-            data: { steadFastReport: report },
-          });
-          console.log(`✅ Steadfast synced for ${order.orderName}`);
-        } catch (error) {
-          console.error(`❌ Steadfast failed for ${order.orderName}:`, error.message);
-        }
+      try {
+        const report = await fetchSteadfastReport(order.shippingPhone);
+        await prisma.order.update({
+          where: { orderName: order.orderName },
+          data: { steadFastReport: report },
+        });
+        console.log(`✅ Steadfast synced for ${order.orderName}`);
+      } catch (error) {
+        console.error(`❌ Steadfast failed for ${order.orderName}:`, error.message);
       }
     }
 
+    // 9. Process Telegram
     for (const order of ordersNeedingTelegramName) {
-      const phone = order.shippingPhone;
-      // Telegram Bot
-      if (!order.realName1) {
-        try {
-          const { name1, name2 } = await fetchTelegramNames(phone);
-          await prisma.order.update({
-            where: { orderName: order.orderName }, // ✅ use orderName here too
-            data: { realName1: name1, realName2: name2 },
-          });
-          console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
-        } catch (error) {
-          console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
-        }
+      try {
+        const { name1, name2 } = await fetchTelegramNames(order.shippingPhone);
+        await prisma.order.update({
+          where: { orderName: order.orderName },
+          data: { realName1: name1, realName2: name2 },
+        });
+        console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
+      } catch (error) {
+        console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
       }
     }
 
