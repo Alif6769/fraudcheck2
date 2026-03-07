@@ -9,7 +9,7 @@ import prisma from "./db.server";
 import { DeliveryMethod } from "@shopify/shopify-app-react-router/server";
 import { fetchFraudReport } from './services/fraudspy.service';
 import { fetchSteadfastReport } from './services/steadfast.service';
-import { fetchTelegramNames } from '../services/telegram.service.js';
+import { fetchTelegramNames } from './services/telegram.service.js';
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
