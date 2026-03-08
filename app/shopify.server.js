@@ -197,13 +197,11 @@ export async function syncOrders(
       const { source, shippingPhone, fraudReport, steadFastReport, realName1, realName2 } = order;
 
       // Determine if we should run fraud checks
-      const shouldRunFraud = fraudspyEnabled && 
-        (allSources || source === 'web') && 
+      const shouldRunFraud = (fraudspyEnabled || source === 'web') && 
         shippingPhone &&
         !fraudReport;
 
-      const shouldRunSteadfast = steadfastEnabled && 
-        (allSources || source === 'web') && 
+      const shouldRunSteadfast = (steadfastEnabled || source === 'web') && 
         shippingPhone &&
         !steadFastReport;
 
