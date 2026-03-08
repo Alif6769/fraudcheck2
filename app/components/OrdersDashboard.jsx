@@ -55,24 +55,73 @@ function extractSuccessRatio(report) {
   return match ? parseFloat(match[1]) : null;
 }
 
-/**
- * Returns emoji indicator based on fraud report and shipping location.
- */
-function getRiskIndicator(fraudReport, shippingAddress) {
+// Helper: parse fraud report string to extract needed data
+function parseFraudSpyReport(report) {
+  // Extract success ratio (handles both "Success ratio:" and "Success Rate:")
+  const ratioMatch = report.match(/(?:Success ratio|Success Rate):\s*(\d+(?:\.\d+)?)%/i);
+  const ratio = ratioMatch ? parseFloat(ratioMatch[1]) : null;
+
+  // Extract total orders (two possible formats)
+  let totalOrders = null;
+  // Format 1: "Total: 33"
+  const totalMatch = report.match(/Total:\s*(\d+)/i);
+  if (totalMatch) {
+    totalOrders = parseInt(totalMatch[1], 10);
+  } else {
+    // Format 2: "Total Delivered: 84  Total Cancelled: 2"
+    const deliveredMatch = report.match(/Total Delivered:\s*(\d+)/i);
+    const cancelledMatch = report.match(/Total Cancelled:\s*(\d+)/i);
+    if (deliveredMatch && cancelledMatch) {
+      totalOrders = parseInt(deliveredMatch[1], 10) + parseInt(cancelledMatch[1], 10);
+    } else if (deliveredMatch) {
+      totalOrders = parseInt(deliveredMatch[1], 10);
+    }
+  }
+
+  // Determine if there are fraud reports
+  let hasFraudReports = false;
+  if (report.includes("Fraud reports:") && !report.includes("No fraud reports.")) {
+    hasFraudReports = true;
+  }
+
+  return { ratio, totalOrders};
+}
+
+function parseSteadfastReport(report) {
+  // Determine if there are fraud reports
+  let hasFraudReports = false;
+  if (report.includes("Fraud reports:") && !report.includes("No fraud reports.")) {
+    hasFraudReports = true;
+  }
+  return hasFraudReports
+}
+
+// Updated risk indicator function
+function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
   if (!fraudReport) return ""; // no report – empty cell
 
-  const ratio = extractSuccessRatio(fraudReport);
-  if (ratio === null) return ""; // couldn't parse – treat as unknown
+  const parsed = parseFraudSpyReport(fraudReport);
+  if (parsed.ratio === null) return ""; // could not parse – treat as unknown
+
+  hasFraudReports = parseSteadfastReport(steadfastReport)
 
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
-  const isLow = ratio < 90 || (ratio > 100 && ratio < 9000);
 
-  if (isOutside && isLow) {
-    return "🔴🔴"; // double red for outside + low ratio
-  } else if (isLow) {
-    return "🔴"; // red for low ratio
+  // Apply the new rule set
+  if (parsed.ratio < 80) {
+    return "🔴🔴🔴";                     // below 80% → triple red
+  } else if (parsed.ratio < 90 && parsed.hasFraudReports) {
+    return "🔴🔴🔴";                     // below 90% with fraud reports → triple red
+  } else if (parsed.hasFraudReports) {
+    return "🔴🔴";                       // has fraud reports → double red
+  } else if (parsed.ratio < 90 && isOutside) {
+    return "🔴🔴";                       // below 90% and outside Dhaka → double red
+  } else if (parsed.ratio < 90) {
+    return "🔴";                         // only below 90% → single red
+  } else if (parsed.totalOrders !== null && parsed.totalOrders < 10) {
+    return "🟠";                         // total orders less than 10 → orange
   } else {
-    return "🟢"; // green for good ratio
+    return "🟢";                         // all good → green
   }
 }
 
@@ -217,7 +266,7 @@ export default function OrdersDashboard() {
                 {orders.map((order) => (
                   <tr key={order.id}>
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
-                      {getRiskIndicator(order.fraudReport, order.shippingAddress)}
+                      {getRiskIndicator(order.fraudReport, order.steadfastReport, order.shippingAddress)}
                     </td>
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
