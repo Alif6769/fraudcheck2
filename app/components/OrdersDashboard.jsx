@@ -78,22 +78,12 @@ function parseFraudSpyReport(report) {
     }
   }
 
-  // Determine if there are fraud reports
-  let hasFraudReports = false;
-  if (report.includes("Fraud reports:") && !report.includes("No fraud reports.")) {
-    hasFraudReports = true;
-  }
-
   return { ratio, totalOrders};
 }
 
 function parseSteadfastReport(report) {
-  // Determine if there are fraud reports
-  let hasFraudReports = false;
-  if (report.includes("Fraud reports:") && !report.includes("No fraud reports.")) {
-    hasFraudReports = true;
-  }
-  return hasFraudReports
+  if (!report) return null; // guard against undefined
+  return report.includes("Fraud reports:") && !report.includes("No fraud reports.");
 }
 
 // Updated risk indicator function
@@ -104,6 +94,7 @@ function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
   if (parsed.ratio === null) return ""; // could not parse – treat as unknown
 
   hasFraudReports = parseSteadfastReport(steadfastReport)
+  if (hasFraudReports === null) return ""; // could not parse – treat as unknown
 
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
 
