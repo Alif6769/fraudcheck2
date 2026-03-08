@@ -77,16 +77,16 @@ function getRiskIndicator(fraudReport, shippingAddress) {
 }
 
 export default function OrdersDashboard() {
-  const { orders = [], shop = "" } = useLoaderData() || {};
+  const { orders = [], shop = "", settings = {} } = useLoaderData() || {};
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
 
-  // State for form inputs
-  const [fetchLimit, setFetchLimit] = useState(100);
-  const [reportLimit, setReportLimit] = useState(10);
-  const [fraudspyEnabled, setFraudspyEnabled] = useState(false);
-  const [steadfastEnabled, setSteadfastEnabled] = useState(true);
-  const [allSources, setAllSources] = useState(false);
+  // Initialize state with saved settings (with defaults)
+  const [fetchLimit, setFetchLimit] = useState(settings.fetchLimit ?? 100);
+  const [reportLimit, setReportLimit] = useState(settings.reportLimit ?? 10);
+  const [fraudspyEnabled, setFraudspyEnabled] = useState(settings.fraudspyEnabled ?? false);
+  const [steadfastEnabled, setSteadfastEnabled] = useState(settings.steadfastEnabled ?? true);
+  // const [allSources, setAllSources] = useState(false);
 
   useEffect(() => {
     if (fetcher.data?.success) {
@@ -142,7 +142,7 @@ export default function OrdersDashboard() {
               />
               Enable Steadfast
             </label>
-            <label>
+            {/* <label>
               <input
                 type="checkbox"
                 name="allSources"
@@ -150,7 +150,7 @@ export default function OrdersDashboard() {
                 onChange={(e) => setAllSources(e.target.checked)}
               />
               Run reports on all sources
-            </label>
+            </label> */}
           </div>
 
           <button
@@ -225,9 +225,9 @@ export default function OrdersDashboard() {
                       {formatCustomerName(order.firstName, order.lastName)}
                     </td>
                     <td style={tdStyle}>
-                      Real name1: {order.realName1 || "-"}
+                      name1: {order.realName1 || "-"}
                       <br />
-                      Real name2: {order.realName2 || "-"}
+                      name2: {order.realName2 || "-"}
                     </td>
                     <td style={tdStyle}>
                       {order.fraudReport ? (

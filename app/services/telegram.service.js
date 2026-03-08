@@ -1,9 +1,9 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
-const apiId = Number(process.env.TELEGRAM_API_ID) || 30429077;
-const apiHash = process.env.TELEGRAM_API_HASH || "cef0470acf4ed7232cafd6ba9db1139b";
-const sessionString = process.env.TELEGRAM_SESSION || "1BQANOTEuMTA4LjU2LjEzMQG7wLsxp+llR5v4J6qs1g7IA/JDiPMvxFRAbxOslwu1hVWdKM/f3r3lM+lKTUe4W8HP4/n4jidsXnOxiPZBe/qoHCCTu8uIKTEXessH/riof4WywzqwdnNRRKpIMNi9VEheJkSSxARaMQOK0cXaGBZwsTPxkB/GZSc/n2AQcdvLdoAH8gLV4y1Tb0MmBaonPrkNt47Q1xx7nYfwtGwhitboVlgWG0/6icl7ZBVWLmNRbehYwuxM5rEc5OIFMchxgFNruoe3DL/LQA7AyzAy1WLND1Tp1QKw5mFCWH8ZoJxEF1nNI11UTbXApW0Vm04gGuxo2rU5udk3rZeVES//4J4TyA==";
+const apiId = Number(process.env.TELEGRAM_API_ID) || 35644061;
+const apiHash = process.env.TELEGRAM_API_HASH || "dd92e4d28a16471b7bf8a1ec7cbdea70";
+const sessionString = process.env.TELEGRAM_SESSION || "1BQANOTEuMTA4LjU2LjEzMQG7KRCm6zpyrZjOsOMTQM4Ga8ErTryGUYrm+Ga/Muxs/EDtGY646uUZjtAhwaZET1mtFDGGCNpvpM7TlpeaZf4emkOxcX8zOTOIQ19csJe2BMRc1ktlcVRW1uV9DCANP6yKCO60FWl8esMGzHa9wstcf18sM8MJKwPL31Yxxr+YBMBy+BkqiOtYOmmOfhr3pTDK0bTgLGCmghpmP0vyACMAKYpSV2XoBBnB3FLaP37juWsmUUHTFU2ct4SZThKV1XAzJJZzEa+W1lGJafmHIriCrTovoxBan5ZqbG5uuG3UudrplVb6fw+JRAxuyqkl4lHUOdhPFMLzCl+fdS83ga4o+w=="
 const TRUECALLER_BOT = process.env.TELEGRAM_BOT || "TrueCalleRobot";
 
 let client = null;
@@ -12,7 +12,7 @@ let initPromise = null;
 let runPromise = null; // to keep the run loop alive
 
 async function ensureClient() {
-  if (connected && client) return client;
+  if (connected) return client;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -21,24 +21,27 @@ async function ensureClient() {
       client = new TelegramClient(stringSession, apiId, apiHash, {
         connectionRetries: 5,
       });
-
-      // Connect once; no client.run() needed
       await client.connect();
 
+      // Start the update loop – this is CRITICAL to receive messages
+      if (typeof client.run === 'function') {
+        client.run().catch(err => console.error('❌ run loop error:', err));
+      } else if (typeof client.start === 'function') {
+        client.start().catch(err => console.error('❌ start error:', err));
+      } else {
+        console.warn('⚠️ No update loop method found. Please update GramJS.');
+      }
+
       connected = true;
-      console.log("✅ Telegram client connected");
+      console.log("✅ Telegram client connected and update loop started");
       return client;
     } catch (error) {
-      console.error("❌ Failed to connect Telegram client:", error);
-      // make sure next call can retry
-      connected = false;
-      client = null;
+      console.error("❌ Failed to connect:", error);
       throw error;
     } finally {
       initPromise = null;
     }
   })();
-
   return initPromise;
 }
 

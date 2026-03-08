@@ -16,7 +16,7 @@ export const action = async ({ request }) => {
       reportLimit: parseInt(formData.get('reportLimit') || '10', 10),
       fraudspyEnabled: formData.get('fraudspyEnabled') === 'on', // checkbox returns 'on' if checked
       steadfastEnabled: formData.get('steadfastEnabled') === 'on',
-      allSources: formData.get('allSources') === 'on',
+      // allSources: formData.get('allSources') === 'on',
     };
 
     // Save settings for this shop
@@ -50,7 +50,14 @@ export const loader = async ({ request }) => {
       where: { shop: session.shop },
       orderBy: { orderTime: "desc" },
     });
-    return { orders, shop: session.shop };
+    const settings = await prisma.shopSettings.findUnique({
+      where: { shop: session.shop },
+    });
+    return { 
+      orders, 
+      shop: session.shop, 
+      settings: settings || {}  // fallback to empty object if not found
+    };
   } catch (error) {
     console.error("❌ Loader error:", error);
     throw new Response("Failed to load orders", { status: 500 });

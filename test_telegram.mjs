@@ -12,7 +12,7 @@ import { fetchTelegramNames } from './app/services/telegram.service.js';
 
 async function test() {
   try {
-    const phone = '01767033331'; // replace with a real number
+    const phone = '01404139939'; // replace with a real number
     console.log(`Testing lookup for ${phone}...`);
     const result = await fetchTelegramNames(phone);
     console.log('✅ Result:', result);

@@ -9,7 +9,7 @@ import prisma from "./db.server";
 import { DeliveryMethod } from "@shopify/shopify-app-react-router/server";
 import { fetchFraudReport } from './services/fraudspy.service';
 import { fetchSteadfastReport } from './services/steadfast.service';
-import { fetchTelegramNames } from './services/telegram.service.js';
+import { fetchTelegramNames } from '../app/services/telegramMicroservice.service.js';
 
 const shopify = shopifyApp({
   apiKey: process.env.SHOPIFY_API_KEY,
@@ -105,7 +105,7 @@ export async function syncOrders(
       reportLimit = 10,
       fraudspyEnabled = true,
       steadfastEnabled = true,
-      allSources = false,
+      // allSources = false,
     } = options;
 
     // 1. Fetch recent orders from Shopify
@@ -182,95 +182,90 @@ export async function syncOrders(
       shop: session.shop,
     }));
 
-    for (const order of cleanedOrders) {
-      const { fraudReport, steadFastReport, realName1, realName2, ...orderWithoutReports } = order;
-      await prisma.order.upsert({
-        where: { orderName: order.orderName },
-        create: order,
-        update: orderWithoutReports, // preserve enrichment fields
-      });
-    }
-
-    // 3. Base condition for report queries
-    const baseWhere = {
-      shop: session.shop,
-      NOT: { shippingPhone: null },
-    };
-    if (!allSources) {
-      baseWhere.source = 'web';
-    }
-
-    // 4. Fetch orders needing FraudSpy
-    const ordersNeedingFSReports = fraudspyEnabled
-      ? await prisma.order.findMany({
-          where: { ...baseWhere, fraudReport: null },
-          orderBy: { orderTime: 'desc' },
-          take: reportLimit,
-        })
-      : [];
-
-    // 5. Fetch orders needing Steadfast
-    const ordersNeedingSteadFastReports = steadfastEnabled
-      ? await prisma.order.findMany({
-          where: { ...baseWhere, steadFastReport: null },
-          orderBy: { orderTime: 'desc' },
-          take: reportLimit,
-        })
-      : [];
-
-    // 6. Fetch orders needing Telegram names (always enabled for now)
-    const ordersNeedingTelegramName = await prisma.order.findMany({
+    // Instead of three separate queries, fetch the latest reportLimit orders
+    const latestOrders = await prisma.order.findMany({
       where: {
         shop: session.shop,
         NOT: { shippingPhone: null },
-        realName1: null,
-        realName2: null,
       },
       orderBy: { orderTime: 'desc' },
       take: reportLimit,
     });
 
-    // 7. Process FraudSpy
-    for (const order of ordersNeedingFSReports) {
-      try {
-        const report = await fetchFraudReport(order.shippingPhone);
-        await prisma.order.update({
-          where: { orderName: order.orderName },
-          data: { fraudReport: report },
-        });
-        console.log(`✅ FraudSpy synced for ${order.orderName}`);
-      } catch (error) {
-        console.error(`❌ FraudSpy failed for ${order.orderName}:`, error.message);
+    // Now process each order individually
+    for (const order of latestOrders) {
+      const { source, shippingPhone, fraudReport, steadFastReport, realName1, realName2 } = order;
+
+      // Determine if we should run fraud checks
+      const shouldRunFraud = fraudspyEnabled && 
+        (allSources || source === 'web') && 
+        shippingPhone &&
+        !fraudReport;
+
+      const shouldRunSteadfast = steadfastEnabled && 
+        (allSources || source === 'web') && 
+        shippingPhone &&
+        !steadFastReport;
+
+      const shouldRunTelegram = shippingPhone && !realName1;
+
+      // Run tasks (you can use Promise.allSettled for both)
+      const tasks = [];
+      if (shouldRunFraud) {
+        tasks.push(
+          fetchFraudReport(shippingPhone)
+            .then(result => ({ type: 'fraud', result }))
+            .catch(error => ({ type: 'fraud', error: error.message }))
+        );
+      }
+      if (shouldRunSteadfast) {
+        tasks.push(
+          fetchSteadfastReport(shippingPhone)
+            .then(result => ({ type: 'steadfast', result }))
+            .catch(error => ({ type: 'steadfast', error: error.message }))
+        );
+      }
+      if (shouldRunTelegram) {
+        tasks.push(
+          fetchTelegramNames(shippingPhone)
+            .then(result => ({ type: 'telegram', result }))
+            .catch(error => ({ type: 'telegram', error: error.message }))
+        );
+      }
+
+      if (tasks.length > 0) {
+        const results = await Promise.allSettled(tasks);
+        // Build updateData and persist
+        const updateData = {};
+        for (const res of results) {
+          if (res.status === 'fulfilled') {
+            const { type, result } = res.value;
+            if (error) {
+                // Service failed – log with type
+                console.error(`❌ ${type} failed:`, error);
+              } else {
+                // Success – add to updateData
+                if (type === 'fraud') {
+                  updateData.fraudReport = result;
+                } else if (type === 'steadfast') {
+                  updateData.steadFastReport = result;
+                } else if (type === 'telegram') {
+                  updateData.realName1 = result.name1;
+                  updateData.realName2 = result.name2;
+                }
+              }
+          } else {
+            console.error(`❌ Service failed:`, res.reason?.message);
+          }
+        }
+        if (Object.keys(updateData).length > 0) {
+          await prisma.order.update({
+            where: { orderName: order.orderName },
+            data: updateData,
+          });
+        }
       }
     }
-
-    // 8. Process Steadfast
-    for (const order of ordersNeedingSteadFastReports) {
-      try {
-        const report = await fetchSteadfastReport(order.shippingPhone);
-        await prisma.order.update({
-          where: { orderName: order.orderName },
-          data: { steadFastReport: report },
-        });
-        console.log(`✅ Steadfast synced for ${order.orderName}`);
-      } catch (error) {
-        console.error(`❌ Steadfast failed for ${order.orderName}:`, error.message);
-      }
-    }
-
-    // 9. Process Telegram
-    // for (const order of ordersNeedingTelegramName) {
-    //   try {
-    //     const { name1, name2 } = await fetchTelegramNames(order.shippingPhone);
-    //     await prisma.order.update({
-    //       where: { orderName: order.orderName },
-    //       data: { realName1: name1, realName2: name2 },
-    //     });
-    //     console.log(`✅ Telegram BOT names synced for ${order.orderName}`);
-    //   } catch (error) {
-    //     console.error(`❌ Telegram BOT failed for ${order.orderName}:`, error.message);
-    //   }
-    // }
 
     console.log(`✅ Synced ${cleanedOrders.length} orders for ${session.shop}`);
     return cleanedOrders.length;

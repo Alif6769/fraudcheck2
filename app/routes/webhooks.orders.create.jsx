@@ -87,7 +87,7 @@ export const action = async ({ request }) => {
       fraudspyEnabled: settings?.fraudspyEnabled ?? true,
       steadfastEnabled: settings?.steadfastEnabled ?? true,
       // telegramEnabled: settings?.telegramEnabled ?? true,
-      allSources: settings?.allSources ?? false,
+      // allSources: settings?.allSources ?? false,
     };
 
     // Enqueue job with options
