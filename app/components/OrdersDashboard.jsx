@@ -45,30 +45,21 @@ const tdStyle = {
   verticalAlign: "top",
 };
 
-/**
- * Extracts success ratio from fraud report text.
- * Returns a number (0-100) or null if not found.
- */
-function extractSuccessRatio(report) {
-  if (!report) return null;
-  const match = report.match(/Success ratio:\s*([0-9.]+)%/);
-  return match ? parseFloat(match[1]) : null;
-}
 
-// Helper: parse fraud report string to extract needed data
+// ================== HELPER: Parse FraudSpy Report ==================
 function parseFraudSpyReport(report) {
+  if (!report) return { ratio: null, totalOrders: null, hasFraudReports: false };
+
   // Extract success ratio (handles both "Success ratio:" and "Success Rate:")
   const ratioMatch = report.match(/(?:Success ratio|Success Rate):\s*(\d+(?:\.\d+)?)%/i);
   const ratio = ratioMatch ? parseFloat(ratioMatch[1]) : null;
 
-  // Extract total orders (two possible formats)
+  // Extract total orders
   let totalOrders = null;
-  // Format 1: "Total: 33"
   const totalMatch = report.match(/Total:\s*(\d+)/i);
   if (totalMatch) {
     totalOrders = parseInt(totalMatch[1], 10);
   } else {
-    // Format 2: "Total Delivered: 84  Total Cancelled: 2"
     const deliveredMatch = report.match(/Total Delivered:\s*(\d+)/i);
     const cancelledMatch = report.match(/Total Cancelled:\s*(\d+)/i);
     if (deliveredMatch && cancelledMatch) {
@@ -78,41 +69,46 @@ function parseFraudSpyReport(report) {
     }
   }
 
-  return { ratio, totalOrders};
+  // Check if FraudSpy report contains actual fraud reports
+  const hasFraudReports = report.includes("Fraud reports:") && !report.includes("No fraud reports.");
+
+  return { ratio, totalOrders, hasFraudReports };
 }
 
+// ================== HELPER: Parse Steadfast Report ==================
 function parseSteadfastReport(report) {
-  if (!report) return null; // guard against undefined
+  if (!report) return null;                 // no report → null
   return report.includes("Fraud reports:") && !report.includes("No fraud reports.");
 }
 
-// Updated risk indicator function
+// ================== MAIN RISK INDICATOR ==================
 function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
-  if (!fraudReport) return ""; // no report – empty cell
+  if (!fraudReport) return "";               // no FraudSpy report → empty
 
   const parsed = parseFraudSpyReport(fraudReport);
-  if (parsed.ratio === null) return ""; // could not parse – treat as unknown
+  if (parsed.ratio === null) return "";      // can't parse ratio → empty
 
-  hasFraudReports = parseSteadfastReport(steadfastReport)
-  if (hasFraudReports === null) return ""; // could not parse – treat as unknown
+  const steadfastFraud = parseSteadfastReport(steadfastReport);
+  // Combine fraud indicators: true if either source has fraud reports (ignore null/undefined)
+  const hasAnyFraudReport = parsed.hasFraudReports || (steadfastFraud === true);
 
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
 
-  // Apply the new rule set
+  // Apply rules in priority order
   if (parsed.ratio < 80) {
-    return "🔴🔴🔴";                     // below 80% → triple red
-  } else if (parsed.ratio < 90 && parsed.hasFraudReports) {
-    return "🔴🔴🔴";                     // below 90% with fraud reports → triple red
-  } else if (parsed.hasFraudReports) {
-    return "🔴🔴";                       // has fraud reports → double red
+    return "🔴🔴🔴";                          // below 80% → triple red
+  } else if (parsed.ratio < 90 && hasAnyFraudReport) {
+    return "🔴🔴🔴";                          // below 90% + fraud → triple red
+  } else if (hasAnyFraudReport) {
+    return "🔴🔴";                            // fraud present → double red
   } else if (parsed.ratio < 90 && isOutside) {
-    return "🔴🔴";                       // below 90% and outside Dhaka → double red
+    return "🔴🔴";                            // below 90% + outside Dhaka → double red
   } else if (parsed.ratio < 90) {
-    return "🔴";                         // only below 90% → single red
+    return "🔴";                              // only below 90% → single red
   } else if (parsed.totalOrders !== null && parsed.totalOrders < 10) {
-    return "🟠";                         // total orders less than 10 → orange
+    return "🟠";                              // low volume → orange
   } else {
-    return "🟢";                         // all good → green
+    return "🟢";                              // all good → green
   }
 }
 
