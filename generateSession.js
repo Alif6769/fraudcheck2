@@ -3,8 +3,8 @@ import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js"; // ✅ fixed import
 import input from "input"; // npm install input
 
-const apiId = 35644061; // Your API ID
-const apiHash = "dd92e4d28a16471b7bf8a1ec7cbdea70"; // Your API hash
+const apiId = 30429077; // Your API ID
+const apiHash = "cef0470acf4ed7232cafd6ba9db1139b"; // Your API hash
 const stringSession = new StringSession(""); // Empty string for first login
 
 (async () => {

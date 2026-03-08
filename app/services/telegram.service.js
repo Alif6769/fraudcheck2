@@ -1,17 +1,18 @@
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 
-const apiId = Number(process.env.TELEGRAM_API_ID) || 35644061;
-const apiHash = process.env.TELEGRAM_API_HASH || "dd92e4d28a16471b7bf8a1ec7cbdea70";
-const sessionString = process.env.TELEGRAM_SESSION || "";
+const apiId = Number(process.env.TELEGRAM_API_ID) || 30429077;
+const apiHash = process.env.TELEGRAM_API_HASH || "cef0470acf4ed7232cafd6ba9db1139b";
+const sessionString = process.env.TELEGRAM_SESSION || "1BQANOTEuMTA4LjU2LjEzMQG7wLsxp+llR5v4J6qs1g7IA/JDiPMvxFRAbxOslwu1hVWdKM/f3r3lM+lKTUe4W8HP4/n4jidsXnOxiPZBe/qoHCCTu8uIKTEXessH/riof4WywzqwdnNRRKpIMNi9VEheJkSSxARaMQOK0cXaGBZwsTPxkB/GZSc/n2AQcdvLdoAH8gLV4y1Tb0MmBaonPrkNt47Q1xx7nYfwtGwhitboVlgWG0/6icl7ZBVWLmNRbehYwuxM5rEc5OIFMchxgFNruoe3DL/LQA7AyzAy1WLND1Tp1QKw5mFCWH8ZoJxEF1nNI11UTbXApW0Vm04gGuxo2rU5udk3rZeVES//4J4TyA==";
 const TRUECALLER_BOT = process.env.TELEGRAM_BOT || "TrueCalleRobot";
 
 let client = null;
 let connected = false;
 let initPromise = null;
+let runPromise = null; // to keep the run loop alive
 
 async function ensureClient() {
-  if (connected) return client;
+  if (connected && client) return client;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -20,29 +21,27 @@ async function ensureClient() {
       client = new TelegramClient(stringSession, apiId, apiHash, {
         connectionRetries: 5,
       });
+
+      // Connect once; no client.run() needed
       await client.connect();
-      
-      // Start the update loop – try run() first, then fallback to start()
-      if (typeof client.run === 'function') {
-        client.run().catch(err => console.error('❌ Telegram run loop error:', err));
-      } else if (typeof client.start === 'function') {
-        client.start().catch(err => console.error('❌ Telegram start error:', err));
-      } else {
-        console.warn('⚠️ No update loop method found. Updates may not be received.');
-      }
-      
+
       connected = true;
       console.log("✅ Telegram client connected");
       return client;
     } catch (error) {
       console.error("❌ Failed to connect Telegram client:", error);
+      // make sure next call can retry
+      connected = false;
+      client = null;
       throw error;
     } finally {
       initPromise = null;
     }
   })();
+
   return initPromise;
 }
+
 
 function normalizePhone(raw) {
   if (!raw) return null;
@@ -80,7 +79,6 @@ export async function fetchTelegramNames(phone) {
   if (!normalized) throw new Error(`Invalid phone number: ${phone}`);
 
   await ensureClient();
-
   const bot = await client.getEntity(TRUECALLER_BOT);
 
   const responsePromise = new Promise((resolve, reject) => {

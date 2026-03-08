@@ -14,7 +14,7 @@ export const action = async ({ request }) => {
     const options = {
       fetchLimit: parseInt(formData.get('fetchLimit') || '100', 10),
       reportLimit: parseInt(formData.get('reportLimit') || '10', 10),
-      fraudspyEnabled: formData.get('fraudspyEnabled') === 'off', // checkbox returns 'on' if checked
+      fraudspyEnabled: formData.get('fraudspyEnabled') === 'on', // checkbox returns 'on' if checked
       steadfastEnabled: formData.get('steadfastEnabled') === 'on',
       allSources: formData.get('allSources') === 'on',
     };
