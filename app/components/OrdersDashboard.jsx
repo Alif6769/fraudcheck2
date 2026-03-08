@@ -84,7 +84,7 @@ export default function OrdersDashboard() {
   // State for form inputs
   const [fetchLimit, setFetchLimit] = useState(100);
   const [reportLimit, setReportLimit] = useState(10);
-  const [fraudspyEnabled, setFraudspyEnabled] = useState(true);
+  const [fraudspyEnabled, setFraudspyEnabled] = useState(false);
   const [steadfastEnabled, setSteadfastEnabled] = useState(true);
   const [allSources, setAllSources] = useState(false);
 
