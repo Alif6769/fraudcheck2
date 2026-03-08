@@ -233,29 +233,28 @@ export async function syncOrders(
 
       if (tasks.length > 0) {
         const results = await Promise.allSettled(tasks);
-        // Build updateData and persist
-        const updateData = {};
+        const updateData = {}; // ensure this is defined
+
         for (const res of results) {
           if (res.status === 'fulfilled') {
-            const { type, result } = res.value;
+            const { type, result, error } = res.value; // ✅ include error
             if (error) {
-                // Service failed – log with type
-                console.error(`❌ ${type} failed:`, error);
-              } else {
-                // Success – add to updateData
-                if (type === 'fraud') {
-                  updateData.fraudReport = result;
-                } else if (type === 'steadfast') {
-                  updateData.steadFastReport = result;
-                } else if (type === 'telegram') {
-                  updateData.realName1 = result.name1;
-                  updateData.realName2 = result.name2;
-                }
+              console.error(`❌ ${type} failed:`, error);
+            } else {
+              if (type === 'fraud') {
+                updateData.fraudReport = result;
+              } else if (type === 'steadfast') {
+                updateData.steadFastReport = result;
+              } else if (type === 'telegram') {
+                updateData.realName1 = result.name1;
+                updateData.realName2 = result.name2;
               }
+            }
           } else {
-            console.error(`❌ Service failed:`, res.reason?.message);
+            console.error(`❌ A service failed:`, res.reason?.message);
           }
         }
+
         if (Object.keys(updateData).length > 0) {
           await prisma.order.update({
             where: { orderName: order.orderName },
