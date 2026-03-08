@@ -25,6 +25,7 @@ const worker = new Worker(
     } = job.data;
 
     console.log(`👷 Processing job for order ${orderName}`);
+    console.log(`Job data:`, job.data);
     const updateData = { source };
 
     // Determine if reports should be attempted
@@ -78,6 +79,8 @@ const worker = new Worker(
     } else {
       console.log(`⏭️ Skipping reports for ${orderName}`);
     }
+
+    console.log(`Final updateData for ${orderName}:`, updateData);
 
     // Always update the order (at least the source)
     await prisma.order.update({
