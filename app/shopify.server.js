@@ -20,7 +20,7 @@ const shopify = shopifyApp({
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
-  // Add webhook configuration here
+  // Add webhook configuration here 
   webhooks: {
     // Order webhooks
     ORDERS_CREATE: {
