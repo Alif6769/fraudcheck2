@@ -1,12 +1,12 @@
 import { useLoaderData, useFetcher } from 'react-router';
 import { useState } from 'react';
-import prisma from '../db.server';   // default import
+import prisma from '../../db.server';  // make sure alias is configured
 
 export async function loader() {
   const products = await prisma.product.findMany({
     orderBy: { productName: 'asc' },
   });
-  return { products };   // ← plain object, automatically JSON‑serialized
+  return { products };
 }
 
 export async function action({ request }) {
@@ -31,14 +31,13 @@ export async function action({ request }) {
         comboReference,
       },
     });
-    return { success: true };   // ← plain object
+    return { success: true };
   }
 
   return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 });
 }
 
-// Component remains the same
-export default function InventoryPage() {
+export default function ProductMapping() {
   const { products } = useLoaderData();
   const [selectedProductId, setSelectedProductId] = useState(null);
   const selectedProduct = products.find(p => p.productId === selectedProductId);
@@ -51,25 +50,18 @@ export default function InventoryPage() {
     fetcher.submit(formData, { method: 'post' });
   };
 
-  // For combo editor, we need to manage a list of components
-  // We'll keep a local state for combo items, then serialize to JSON on save.
-  // But for simplicity, we'll use a textarea to edit JSON directly (for now).
-  // In production, you'd build a proper multi‑select with quantity inputs.
-
   return (
-    <div className="flex h-full">
-      {/* Sidebar */}
-      <div className="w-1/4 border-r p-4 overflow-auto">
-        <h2 className="text-lg font-bold mb-4">Products</h2>
+    <div className="flex">
+      {/* Product list sidebar */}
+      <div className="w-1/3 border-r p-4 overflow-auto">
+        <h3 className="font-bold mb-2">Products</h3>
         <ul className="space-y-1">
           {products.map((product) => (
             <li
               key={product.productId}
               onClick={() => setSelectedProductId(product.productId)}
               className={`cursor-pointer p-2 rounded ${
-                selectedProductId === product.productId
-                  ? 'bg-blue-100'
-                  : 'hover:bg-gray-100'
+                selectedProductId === product.productId ? 'bg-blue-100' : 'hover:bg-gray-100'
               }`}
             >
               {product.productName}
@@ -83,7 +75,7 @@ export default function InventoryPage() {
         </ul>
       </div>
 
-      {/* Main panel */}
+      {/* Editor panel */}
       <div className="flex-1 p-4">
         {selectedProduct ? (
           <fetcher.Form method="post" onSubmit={handleSave}>
@@ -91,7 +83,6 @@ export default function InventoryPage() {
             <h2 className="text-xl font-bold mb-4">Edit: {selectedProduct.productName}</h2>
 
             <div className="space-y-4">
-              {/* Product type checkboxes */}
               <div>
                 <label className="block mb-1">Product Type</label>
                 <div className="space-x-4">
@@ -101,8 +92,7 @@ export default function InventoryPage() {
                       name="rawProductFlag"
                       value="true"
                       defaultChecked={selectedProduct.rawProductFlag}
-                    />{' '}
-                    Root (Raw) Product
+                    /> Root (Raw) Product
                   </label>
                   <label>
                     <input
@@ -110,8 +100,7 @@ export default function InventoryPage() {
                       name="isCombo"
                       value="true"
                       defaultChecked={selectedProduct.isCombo}
-                    />{' '}
-                    Combo Product
+                    /> Combo Product
                   </label>
                   <label>
                     <input
@@ -119,13 +108,11 @@ export default function InventoryPage() {
                       name="isDuplicate"
                       value="true"
                       defaultChecked={selectedProduct.isDuplicate}
-                    />{' '}
-                    Duplicate Product
+                    /> Duplicate Product
                   </label>
                 </div>
               </div>
 
-              {/* If duplicate, choose root product */}
               {selectedProduct.isDuplicate && (
                 <div>
                   <label className="block mb-1">Root Product (for duplicate)</label>
@@ -146,7 +133,6 @@ export default function InventoryPage() {
                 </div>
               )}
 
-              {/* If combo, define composition */}
               {selectedProduct.isCombo && (
                 <div>
                   <label className="block mb-1">Composition (JSON)</label>

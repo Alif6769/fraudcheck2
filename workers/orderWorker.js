@@ -6,9 +6,46 @@ import { fetchFraudReport } from "../app/services/fraudspy.service.js";
 import { fetchSteadfastReport } from "../app/services/steadfast.service.js";
 import { fetchTelegramNames } from '../app/services/telegramMicroservice.service.js';
 import { ORDER_QUEUE_NAME } from "../app/queues/orderQueue.server.js";
+// import for sheet
+import { sheetQueue, SHEET_QUEUE_NAME } from '../app/queues/sheetQueue.server.js';
+import { appendOrderToSheet } from '../app/services/sheets.service.js';
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+
+// for sheet worker
+const sheetWorker = new Worker(
+  SHEET_QUEUE_NAME,
+  async (job) => {
+    const { type, orderName } = job.data;
+
+    if (type === 'export-today') {
+      // Export all orders from today
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const orders = await prisma.order.findMany({
+        where: {
+          orderTime: { gte: todayStart },
+        },
+      });
+      for (const order of orders) {
+        await appendOrderToSheet(order);
+      }
+      console.log(`✅ Exported ${orders.length} orders to sheet.`);
+    } else if (type === 'export-single') {
+      // Export a single order by orderName
+      const order = await prisma.order.findUnique({
+        where: { orderName },
+      });
+      if (order) {
+        await appendOrderToSheet(order);
+      }
+    }
+  },
+  { connection }
+);
+
+console.log("🚀 Sheet worker started");
 
 const worker = new Worker(
   ORDER_QUEUE_NAME,
