@@ -12,6 +12,7 @@ export const action = async ({ request }) => {
     console.log(`Order number: #${payload.order_number}`);
 
     const { orderQueue } = await import("../queues/orderQueue.server");
+    const { sheetQueue } = await import("../queues/sheetQueue.server");
 
     const orderId = payload.id.toString();
     const orderTime = new Date(payload.created_at);
@@ -100,20 +101,10 @@ export const action = async ({ request }) => {
       ...jobOptions,
     });
 
-    const source = payload.source_name || null;
-
-    // Enqueue a background job for the slow work
-    await orderQueue.add("process-order", {
-      orderName: orderData.orderName,
-      orderId: orderData.orderId,
-      shop,
-      shippingPhone,
-      source,
-    });
-
     await sheetQueue.add("export-single", {
       type: "export-single",
       orderName: orderData.orderName,
+      shop: orderData.shop, // make sure you pass shop
     });
 
     console.log(`✅ Order #${payload.order_number} saved and enqueued for enrichment`);
