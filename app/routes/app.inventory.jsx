@@ -1,5 +1,5 @@
 import { json } from '@remix-run/node';
-import { useLoaderData, useFetcher } from '@remix-run/react';
+import { useLoaderData, useFetcher } from 'react-router';
 import { useState } from 'react';
 import { prisma } from '~/db.server';
 

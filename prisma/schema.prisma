@@ -14,28 +14,28 @@ datasource db {
 }
 
 model Session {
-  id            String   @id
-  shop          String
-  state         String
-  isOnline      Boolean  @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean  @default(false)
-  locale        String?
-  collaborator  Boolean? @default(false)
-  emailVerified Boolean? @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
 
 model Order {
   id              Int      @id @default(autoincrement())
-  orderId         String   
+  orderId         String
   orderName       String   @unique
   shop            String
   orderTime       DateTime
@@ -49,40 +49,70 @@ model Order {
   shippingFee     String
   products        Json
   // new fields
-  source          String?   // e.g., "web", "pos", etc.
-  fraudReport     String?   // full text report from FraudSpy
+  source          String? // e.g., "web", "pos", etc.
+  fraudReport     String? // full text report from FraudSpy
   steadFastReport String?
   realName1       String?
   realName2       String?
 }
 
 model ShopSettings {
-  shop             String @id   // e.g. "myshop.myshopify.com"
-  fetchLimit       Int    @default(100)
-  reportLimit      Int    @default(10)
-  fraudspyEnabled  Boolean @default(false)
-  steadfastEnabled Boolean @default(true)
-  telegramEnabled  Boolean @default(true)
-  allSources       Boolean @default(false)
+  shop             String   @id // e.g. "myshop.myshopify.com"
+  fetchLimit       Int      @default(100)
+  reportLimit      Int      @default(10)
+  fraudspyEnabled  Boolean  @default(false)
+  steadfastEnabled Boolean  @default(true)
+  telegramEnabled  Boolean  @default(true)
+  allSources       Boolean  @default(false)
   updatedAt        DateTime @updatedAt
 }
 
 model Product {
-  id                     String   @id @default(cuid())
-  productId              String   @unique
-  productName            String
-  price                  Float?
-  inventoryCategory      String?
-  productCategory        String?
-  shortForm              String?
-  isCombo                Boolean  @default(false)
-  rawProductFlag         Boolean  @default(false)
-  isDuplicate            Boolean  @default(false)
-  rootProductId          String?  // ID of the root product if this is a duplicate
-  comboReference         String?  // JSON array of { productId, quantity }
-  inventoryWarningLevel  Int?
-  baseDatetime           DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  inventoryDaily         InventoryDaily[]
+  id                    String           @id @default(cuid())
+  productId             String           @unique
+  productName           String
+  price                 Float?
+  inventoryCategory     String?
+  productCategory       String?
+  shortForm             String?
+  isCombo               Boolean          @default(false)
+  rawProductFlag        Boolean          @default(false)
+  isDuplicate           Boolean          @default(false)
+  rootProductId         String? // ID of the root product if this is a duplicate
+  comboReference        String? // JSON array of { productId, quantity }
+  inventoryWarningLevel Int?
+  baseDatetime          DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  inventoryDaily        InventoryDaily[]
+  adjustments           Adjustment[]
+}
+
+model InventoryDaily {
+  id               String   @id @default(cuid())
+  productId        String
+  date             DateTime // date only (store as date)
+  sold             Int      @default(0)
+  returned         Int      @default(0)
+  damaged          Int      @default(0)
+  closingInventory Int      @default(0)
+  product          Product  @relation(fields: [productId], references: [productId], onDelete: Cascade)
+
+  @@unique([productId, date])
+}
+
+model ProcessedFulfillment {
+  orderId     String   @id
+  processedAt DateTime @default(now())
+}
+
+model Adjustment {
+  id        String   @id @default(cuid())
+  productId String
+  date      DateTime
+  type      String // 'return' or 'damage'
+  quantity  Int
+  note      String?
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [productId])
 }
