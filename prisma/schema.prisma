@@ -66,3 +66,23 @@ model ShopSettings {
   allSources       Boolean @default(false)
   updatedAt        DateTime @updatedAt
 }
+
+model Product {
+  id                     String   @id @default(cuid())
+  productId              String   @unique
+  productName            String
+  price                  Float?
+  inventoryCategory      String?
+  productCategory        String?
+  shortForm              String?
+  isCombo                Boolean  @default(false)
+  rawProductFlag         Boolean  @default(false)
+  isDuplicate            Boolean  @default(false)
+  rootProductId          String?  // ID of the root product if this is a duplicate
+  comboReference         String?  // JSON array of { productId, quantity }
+  inventoryWarningLevel  Int?
+  baseDatetime           DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  inventoryDaily         InventoryDaily[]
+}
