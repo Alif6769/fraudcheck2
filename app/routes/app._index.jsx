@@ -1,5 +1,5 @@
 // app/routes/app._index.jsx
-import { authenticate, syncOrders, syncSheetForToday  } from "../shopify.server";
+import { authenticate, syncOrders, syncSheetForToday, clearSheetForShop } from "../shopify.server";
 import prisma from "../db.server";
 import OrdersDashboard from "../components/OrdersDashboard"; // ✅ import the component
 
@@ -24,6 +24,18 @@ export const action = async ({ request }) => {
           intent,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (intent === "clear-sheet") {
+      await clearSheetForShop(session.shop);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Sheet clear started",
+          intent,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
       );
     }
 

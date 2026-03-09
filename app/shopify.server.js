@@ -302,6 +302,24 @@ export async function syncSheetForToday(shop) {
   }
 }
 
+// ============================
+// CLEAR SHEET FUNCTION
+// ============================
+export async function clearSheetForShop(shop) {
+  try {
+    const { sheetQueue } = await import("./queues/sheetQueue.server");
+    await sheetQueue.add("clear-sheet", {
+      type: "clear-sheet",
+      shop,
+    });
+    console.log(`✅ Enqueued "clear-sheet" job for ${shop}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ clearSheetForShop failed for ${shop}:`, error);
+    throw error;
+  }
+}
+
 export default shopify;
 export const apiVersion = ApiVersion.October25;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;

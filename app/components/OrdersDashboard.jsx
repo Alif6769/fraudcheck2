@@ -238,6 +238,24 @@ export default function OrdersDashboard() {
                 ? "Syncing Sheet..."
                 : "Sync Today to Sheet"}
             </button>
+
+            <button
+              type="submit"
+              name="intent"
+              value="clear-sheet"
+              disabled={isSubmitting && currentIntent === "clear-sheet"}
+              style={{
+                padding: "8px 16px",
+                background: "#dc3545", // red
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+              }}
+            >
+              {isSubmitting && currentIntent === "clear-sheet"
+                ? "Clearing..."
+                : "Clear Sheet"}
+            </button>
           </div>
         </fetcher.Form>
 
@@ -262,6 +280,12 @@ export default function OrdersDashboard() {
               fontWeight: "500",
             }}
           >
+            ✅ {fetcher.data.message}
+          </div>
+        )}
+
+        {fetcher.data?.success && fetcher.data.intent === "clear-sheet" && (
+          <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
             ✅ {fetcher.data.message}
           </div>
         )}

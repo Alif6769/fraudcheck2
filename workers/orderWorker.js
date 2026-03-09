@@ -9,32 +9,51 @@ import { ORDER_QUEUE_NAME } from "../app/queues/orderQueue.server.js";
 // import for sheet
 import { sheetQueue, SHEET_QUEUE_NAME } from '../app/queues/sheetQueue.server.js';
 import { appendOrderToSheet } from '../app/services/sheets.service.js';
+import { clearSheet } from '../app/services/sheets.service.js';
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
 
 // for sheet worker update
+// for sheet worker update
 const sheetWorker = new Worker(
   SHEET_QUEUE_NAME,
   async (job) => {
-    const { type, orderName, shop } = job.data; // shop is now included
+    const { type, orderName, shop } = job.data;
 
-    if (type === 'export-today') {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
+    if (type === 'clear-sheet') {
+      // Clear all data rows (keep header)
+      await clearSheet();
+      console.log(`✅ Sheet cleared for shop ${shop}.`);
+    }
+    else if (type === 'export-today') {
+      // Dynamic start: yesterday at 18:00 local (+6) = yesterday 12:00 UTC
+      const now = new Date();
+      const todayUTCStart = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        0, 0, 0, 0
+      );
+      const yesterdayUTCStart = new Date(todayUTCStart - 24 * 60 * 60 * 1000);
+      const startDate = new Date(yesterdayUTCStart);
+      startDate.setUTCHours(12, 0, 0, 0); // 12:00 UTC = 18:00 +6
+
       const orders = await prisma.order.findMany({
         where: {
-          shop,                                 // ← filter by this shop
-          orderTime: { gte: todayStart },
+          shop,
+          orderTime: { gte: startDate },
         },
+        orderBy: { orderTime: 'asc' },
       });
       for (const order of orders) {
         await appendOrderToSheet(order);
       }
-      console.log(`✅ Exported ${orders.length} orders to sheet for shop ${shop}.`);
-    } else if (type === 'export-single') {
+      console.log(`✅ Exported ${orders.length} orders (since ${startDate.toISOString()}) to sheet for shop ${shop}.`);
+    }
+    else if (type === 'export-single') {
       const order = await prisma.order.findFirst({
-        where: { orderName, shop },             // ← both fields
+        where: { orderName, shop },
       });
       if (order) {
         await appendOrderToSheet(order);

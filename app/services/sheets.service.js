@@ -12,8 +12,8 @@ const auth = new JWT({
 
 const sheets = google.sheets({ version: 'v4', auth });
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID; // from your sheet URL
-const SHEET_NAME = 'Orders'; // name of the sheet tab
+const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
+const SHEET_NAME = 'Orders';
 
 /**
  * Append a single order row to the sheet.
@@ -21,7 +21,6 @@ const SHEET_NAME = 'Orders'; // name of the sheet tab
  */
 export async function appendOrderToSheet(order) {
   try {
-    // First, check if orderName already exists in the sheet
     const existing = await findOrderRow(order.orderName);
     if (existing) {
       console.log(`⏭️ Order ${order.orderName} already in sheet, skipping.`);
@@ -38,7 +37,7 @@ export async function appendOrderToSheet(order) {
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:E`, // adjust columns
+      range: `${SHEET_NAME}!A:E`,
       valueInputOption: 'USER_ENTERED',
       requestBody: { values },
     });
@@ -55,7 +54,7 @@ export async function appendOrderToSheet(order) {
 async function findOrderRow(orderName) {
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!B:B`, // column B = order name
+    range: `${SHEET_NAME}!B:B`,
   });
   const rows = response.data.values || [];
   for (let i = 0; i < rows.length; i++) {
@@ -72,5 +71,52 @@ function formatCustomerName(first, last) {
 
 function formatProducts(products) {
   if (!Array.isArray(products) || products.length === 0) return '-';
-  return products.map(p => `${p.title} (x${p.quantity})`).join(', ');
+  // Each product on a new line for better readability
+  return products.map(p => `${p.title} (x${p.quantity})`).join('\n');
+}
+
+/**
+ * Clear all data rows (keep header row) from the sheet.
+ */
+export async function clearSheet() {
+  try {
+    // Get sheet metadata to find the last row
+    const spreadsheet = await sheets.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+      ranges: [],
+      includeGridData: false,
+    });
+    const sheet = spreadsheet.data.sheets.find(s => s.properties.title === SHEET_NAME);
+    if (!sheet) {
+      throw new Error(`Sheet "${SHEET_NAME}" not found`);
+    }
+    const rowCount = sheet.properties.gridProperties.rowCount;
+    if (rowCount <= 1) {
+      console.log('Sheet has no data rows, nothing to clear.');
+      return;
+    }
+
+    // Delete rows 2 to rowCount (0‑based: delete dimension startIndex 1, endIndex rowCount)
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheet.properties.sheetId,
+                dimension: 'ROWS',
+                startIndex: 1,    // 0‑based, so row 2 = index 1
+                endIndex: rowCount,
+              },
+            },
+          },
+        ],
+      },
+    });
+    console.log(`✅ Cleared rows 2–${rowCount} from sheet.`);
+  } catch (error) {
+    console.error('❌ Failed to clear sheet:', error);
+    throw error;
+  }
 }

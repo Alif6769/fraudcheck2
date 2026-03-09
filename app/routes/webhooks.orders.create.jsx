@@ -101,11 +101,16 @@ export const action = async ({ request }) => {
       ...jobOptions,
     });
 
-    await sheetQueue.add("export-single", {
-      type: "export-single",
-      orderName: orderData.orderName,
-      shop: orderData.shop, // make sure you pass shop
-    });
+    try {
+      await sheetQueue.add("export-single", {
+        type: "export-single",
+        orderName: orderData.orderName,
+        shop: orderData.shop,
+      });
+    } catch (queueError) {
+      console.error("Failed to enqueue sheet job for web hook:", queueError);
+      // Still return 200 to Shopify – the order is already saved
+    }
 
     console.log(`✅ Order #${payload.order_number} saved and enqueued for enrichment`);
     return new Response(null, { status: 200 });
