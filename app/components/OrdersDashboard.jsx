@@ -77,8 +77,11 @@ function parseFraudSpyReport(report) {
 
 // ================== HELPER: Parse Steadfast Report ==================
 function parseSteadfastReport(report) {
-  if (!report) return null;                 // no report → null
-  return report.includes("Fraud reports:") && !report.includes("No fraud reports.");
+  if (!report) return null; // no report → null
+
+  const text = report.toLowerCase();
+
+  return text.includes("fraud reports:") && !text.includes("no fraud reports.");
 }
 
 // ================== MAIN RISK INDICATOR ==================
