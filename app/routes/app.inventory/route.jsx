@@ -1,4 +1,14 @@
 import { Outlet, NavLink } from 'react-router';
+import { redirect } from "react-router";
+
+export async function loader({ request }) {
+  const url = new URL(request.url);
+  // If the user hits /app/inventory exactly, redirect to product-mapping
+  if (url.pathname === "/app/inventory") {
+    return redirect("/app/inventory/product-mapping");
+  }
+  return null;
+}
 
 export default function InventoryLayout() {
   const navItems = [

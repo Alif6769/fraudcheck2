@@ -1,6 +1,4 @@
 // app/routes/app.sheet-sync.jsx
-import { authenticate } from "../shopify.server";
-import { sheetQueue } from "../queues/sheetQueue.server";
 
 export const action = async ({ request }) => {
   try {
@@ -19,14 +17,12 @@ export const action = async ({ request }) => {
       );
     }
 
-    // Optionally: perform a sanity check that this shop exists in your DB
-    // (so a random POST can’t enqueue jobs for arbitrary shops)
-    // const existingShopSettings = await prisma.shopSettings.findUnique({ where: { shop } });
-    // if (!existingShopSettings) { ... }
+    // Dynamically import the server-only queue module
+    const { sheetQueue } = await import("../queues/sheetQueue.server");
 
     await sheetQueue.add("export-today", {
       type: "export-today",
-      shop, // use the shop from the authenticated page's loader
+      shop,
     });
 
     return new Response(
@@ -45,6 +41,7 @@ export const action = async ({ request }) => {
   }
 };
 
+// This route is "action-only" – nothing for the client to render
 export default function SheetSync() {
   return null;
 }
