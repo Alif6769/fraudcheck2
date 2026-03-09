@@ -13,7 +13,7 @@ import { appendOrderToSheet } from '../app/services/sheets.service.js';
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
 
-// for sheet worker
+// for sheet worker update
 const sheetWorker = new Worker(
   SHEET_QUEUE_NAME,
   async (job) => {
