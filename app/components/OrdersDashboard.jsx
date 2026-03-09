@@ -253,7 +253,7 @@ export default function OrdersDashboard() {
                 {orders.map((order) => (
                   <tr key={order.id}>
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
-                      {getRiskIndicator(order.fraudReport, order.steadfastReport, order.shippingAddress)}
+                      {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
                     </td>
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
