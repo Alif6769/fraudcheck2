@@ -128,6 +128,9 @@ export default function OrdersDashboard() {
   const [steadfastEnabled, setSteadfastEnabled] = useState(settings.steadfastEnabled ?? true);
   // const [allSources, setAllSources] = useState(false);
 
+  console.log("DEBUG shop:", shop);
+  console.log("DEBUG encodedShop:", encodeURIComponent(shop));
+
   useEffect(() => {
     if (fetcher.data?.success) {
       revalidator.revalidate();
