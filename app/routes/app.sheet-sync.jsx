@@ -2,9 +2,6 @@
 import { authenticate } from "../shopify.server";
 import { sheetQueue } from "../queues/sheetQueue.server";
 
-// app/routes/app.sheet-sync.jsx
-import { sheetQueue } from "../queues/sheetQueue.server";
-
 export const action = async ({ request }) => {
   try {
     // Get shop from the query string
