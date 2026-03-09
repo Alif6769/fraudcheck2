@@ -238,7 +238,7 @@ export default function OrdersDashboard() {
             >
               <thead>
                 <tr>
-                  <th style={{ ...thStyle, width: "50px" }}>Risk</th>
+                  <th style={{ ...thStyle, width: "70px" }}>Risk</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
