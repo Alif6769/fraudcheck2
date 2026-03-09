@@ -1,6 +1,6 @@
 import { useLoaderData, useFetcher } from 'react-router';
 import { useState } from 'react';
-import prisma from '../../db.server';  // make sure alias is configured
+import prisma from '../../db.server';
 
 export async function loader() {
   const products = await prisma.product.findMany({
@@ -52,7 +52,6 @@ export default function ProductMapping() {
 
   return (
     <div className="flex">
-      {/* Product list sidebar */}
       <div className="w-1/3 border-r p-4 overflow-auto">
         <h3 className="font-bold mb-2">Products</h3>
         <ul className="space-y-1">
@@ -75,7 +74,6 @@ export default function ProductMapping() {
         </ul>
       </div>
 
-      {/* Editor panel */}
       <div className="flex-1 p-4">
         {selectedProduct ? (
           <fetcher.Form method="post" onSubmit={handleSave}>
