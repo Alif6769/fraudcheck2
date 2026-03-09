@@ -1,13 +1,12 @@
-import { json } from '@react-router/node';
 import { useLoaderData, useFetcher } from 'react-router';
 import { useState } from 'react';
-import prisma from "../db.server";
+import prisma from '../db.server';   // default import
 
 export async function loader() {
   const products = await prisma.product.findMany({
     orderBy: { productName: 'asc' },
   });
-  return json({ products });
+  return { products };   // ← plain object, automatically JSON‑serialized
 }
 
 export async function action({ request }) {
@@ -32,12 +31,13 @@ export async function action({ request }) {
         comboReference,
       },
     });
-    return json({ success: true });
+    return { success: true };   // ← plain object
   }
 
-  return json({ error: 'Invalid action' }, { status: 400 });
+  return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 });
 }
 
+// Component remains the same
 export default function InventoryPage() {
   const { products } = useLoaderData();
   const [selectedProductId, setSelectedProductId] = useState(null);
