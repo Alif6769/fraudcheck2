@@ -144,8 +144,61 @@ export default function OrdersDashboard() {
   return (
     <s-page heading="Orders Dashboard" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
+        {/* Form with controls */}
         <fetcher.Form method="post">
-          {/* Controls (fetchLimit, reportLimit, checkboxes) exactly as you have now */}
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
+            <label>
+              Pull orders (max):
+              <input
+                type="number"
+                name="fetchLimit"
+                value={fetchLimit}
+                onChange={(e) => setFetchLimit(e.target.value)}
+                min="1"
+                max="250"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              Reports per service:
+              <input
+                type="number"
+                name="reportLimit"
+                value={reportLimit}
+                onChange={(e) => setReportLimit(e.target.value)}
+                min="0"
+                max="50"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="fraudspyEnabled"
+                checked={fraudspyEnabled}
+                onChange={(e) => setFraudspyEnabled(e.target.checked)}
+              />
+              Enable FraudSpy
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="steadfastEnabled"
+                checked={steadfastEnabled}
+                onChange={(e) => setSteadfastEnabled(e.target.checked)}
+              />
+              Enable Steadfast
+            </label>
+            {/* <label>
+              <input
+                type="checkbox"
+                name="allSources"
+                checked={allSources}
+                onChange={(e) => setAllSources(e.target.checked)}
+              />
+              Run reports on all sources
+            </label> */}
+          </div>
 
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             {/* Sync Orders button */}
