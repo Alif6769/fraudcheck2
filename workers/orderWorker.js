@@ -17,25 +17,24 @@ const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
 const sheetWorker = new Worker(
   SHEET_QUEUE_NAME,
   async (job) => {
-    const { type, orderName } = job.data;
+    const { type, orderName, shop } = job.data; // shop is now included
 
     if (type === 'export-today') {
-      // Export all orders from today
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
       const orders = await prisma.order.findMany({
         where: {
+          shop,                                 // ← filter by this shop
           orderTime: { gte: todayStart },
         },
       });
       for (const order of orders) {
         await appendOrderToSheet(order);
       }
-      console.log(`✅ Exported ${orders.length} orders to sheet.`);
+      console.log(`✅ Exported ${orders.length} orders to sheet for shop ${shop}.`);
     } else if (type === 'export-single') {
-      // Export a single order by orderName
-      const order = await prisma.order.findUnique({
-        where: { orderName },
+      const order = await prisma.order.findFirst({
+        where: { orderName, shop },             // ← both fields
       });
       if (order) {
         await appendOrderToSheet(order);

@@ -207,7 +207,7 @@ export default function OrdersDashboard() {
             >
               {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
             </button>
-            <sheetFetcher.Form method="post" action="/app/sheet-sync" style={{ margin: 0 }}>
+            <sheetFetcher.Form method="post" action={`/app/sheet-sync?shop=${encodeURIComponent(shop)}`} style={{ margin: 0 }}>
               <button
                 type="submit"
                 disabled={sheetFetcher.state === "submitting"}
