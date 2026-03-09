@@ -1,7 +1,7 @@
 import { json } from '@react-router/node';
 import { useLoaderData, useFetcher } from 'react-router';
 import { useState } from 'react';
-import { prisma } from '../db.server';
+import prisma from "../db.server";
 
 export async function loader() {
   const products = await prisma.product.findMany({
