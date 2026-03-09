@@ -45,7 +45,7 @@ const sheetWorker = new Worker(
   { connection }
 );
 
-console.log("🚀 Sheet worker started");
+console.log("🚀 Sheet worker started ");
 
 const worker = new Worker(
   ORDER_QUEUE_NAME,
