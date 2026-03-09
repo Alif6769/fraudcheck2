@@ -193,39 +193,37 @@ export default function OrdersDashboard() {
             </label> */}
           </div>
 
-          <button
-            type="submit"
-            disabled={fetcher.state === "submitting"}
-            style={{
-              padding: "8px 16px",
-              marginBottom: "15px",
-              cursor: "pointer",
-              background: "#008060",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-            }}
-          >
-            {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
-          </button>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <button
+              type="submit"
+              disabled={fetcher.state === "submitting"}
+              style={{
+                padding: "8px 16px",
+                background: "#008060",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+              }}
+            >
+              {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
+            </button>
+            <sheetFetcher.Form method="post" action="/app/sheet-sync" style={{ margin: 0 }}>
+              <button
+                type="submit"
+                disabled={sheetFetcher.state === "submitting"}
+                style={{
+                  padding: "8px 16px",
+                  background: "#4285F4",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "6px",
+                }}
+              >
+                {sheetFetcher.state === "submitting" ? "Syncing Sheet..." : "Sync Today to Sheet"}
+              </button>
+            </sheetFetcher.Form>
+          </div>
         </fetcher.Form>
-
-        <sheetFetcher.Form method="post" action="/app/sheet-sync"> {/* we'll create this route */}
-          <button
-            type="submit"
-            disabled={sheetFetcher.state === "submitting"}
-            style={{
-              padding: "8px 16px",
-              marginLeft: "10px",
-              background: "#4285F4",
-              color: "white",
-              border: "none",
-              borderRadius: "6px",
-            }}
-          >
-            {sheetFetcher.state === "submitting" ? "Syncing Sheet..." : "Sync Today to Sheet"}
-          </button>
-        </sheetFetcher.Form>
 
         {fetcher.data?.success && (
           <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>

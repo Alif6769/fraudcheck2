@@ -111,6 +111,11 @@ export const action = async ({ request }) => {
       source,
     });
 
+    await sheetQueue.add("export-single", {
+      type: "export-single",
+      orderName: orderData.orderName,
+    });
+
     console.log(`✅ Order #${payload.order_number} saved and enqueued for enrichment`);
     return new Response(null, { status: 200 });
   } catch (error) {
