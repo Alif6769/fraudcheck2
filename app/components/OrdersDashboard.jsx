@@ -90,7 +90,7 @@ function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
 
   const steadfastFraud = parseSteadfastReport(steadfastReport);
   // Combine fraud indicators: true if either source has fraud reports (ignore null/undefined)
-  const hasAnyFraudReport = parsed.hasFraudReports || (steadfastFraud === true);
+  const hasAnyFraudReport = (steadfastFraud === true);
 
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
 
