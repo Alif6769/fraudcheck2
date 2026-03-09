@@ -272,6 +272,36 @@ export async function syncOrders(
   }
 }
 
+// ============================
+// SYNC SHEET FUNCTION (NEW)
+// ============================
+export async function syncSheetForToday(shop) {
+  try {
+    // Optional: check that this shop is known / installed
+    const shopSettings = await prisma.shopSettings.findUnique({
+      where: { shop },
+    });
+    if (!shopSettings) {
+      console.warn(`syncSheetForToday: No shopSettings found for ${shop}`);
+      // You can choose to throw or just log
+    }
+
+    // Dynamically import the server-only queue, so this stays server-only
+    const { sheetQueue } = await import("./queues/sheetQueue.server");
+
+    await sheetQueue.add("export-today", {
+      type: "export-today",
+      shop,
+    });
+
+    console.log(`✅ Enqueued "export-today" sheet job for ${shop}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ syncSheetForToday failed for ${shop}:`, error);
+    throw error;
+  }
+}
+
 export default shopify;
 export const apiVersion = ApiVersion.October25;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;

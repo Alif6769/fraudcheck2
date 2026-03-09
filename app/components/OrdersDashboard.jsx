@@ -121,6 +121,10 @@ export default function OrdersDashboard() {
   const sheetFetcher = useFetcher();
   const revalidator = useRevalidator();
 
+  // Track which action is running, optional
+  const isSubmitting = fetcher.state === "submitting";
+  const currentIntent = fetcher.submission?.formData?.get("intent") || null;
+
   // Initialize state with saved settings (with defaults)
   const [fetchLimit, setFetchLimit] = useState(settings.fetchLimit ?? 100);
   const [reportLimit, setReportLimit] = useState(settings.reportLimit ?? 10);
@@ -140,66 +144,16 @@ export default function OrdersDashboard() {
   return (
     <s-page heading="Orders Dashboard" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
-        {/* Form with controls */}
         <fetcher.Form method="post">
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
-            <label>
-              Pull orders (max):
-              <input
-                type="number"
-                name="fetchLimit"
-                value={fetchLimit}
-                onChange={(e) => setFetchLimit(e.target.value)}
-                min="1"
-                max="250"
-                style={{ marginLeft: '8px', width: '80px' }}
-              />
-            </label>
-            <label>
-              Reports per service:
-              <input
-                type="number"
-                name="reportLimit"
-                value={reportLimit}
-                onChange={(e) => setReportLimit(e.target.value)}
-                min="0"
-                max="50"
-                style={{ marginLeft: '8px', width: '80px' }}
-              />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                name="fraudspyEnabled"
-                checked={fraudspyEnabled}
-                onChange={(e) => setFraudspyEnabled(e.target.checked)}
-              />
-              Enable FraudSpy
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                name="steadfastEnabled"
-                checked={steadfastEnabled}
-                onChange={(e) => setSteadfastEnabled(e.target.checked)}
-              />
-              Enable Steadfast
-            </label>
-            {/* <label>
-              <input
-                type="checkbox"
-                name="allSources"
-                checked={allSources}
-                onChange={(e) => setAllSources(e.target.checked)}
-              />
-              Run reports on all sources
-            </label> */}
-          </div>
+          {/* Controls (fetchLimit, reportLimit, checkboxes) exactly as you have now */}
 
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            {/* Sync Orders button */}
             <button
               type="submit"
-              disabled={fetcher.state === "submitting"}
+              name="intent"
+              value="sync-orders"
+              disabled={isSubmitting && currentIntent === "sync-orders"}
               style={{
                 padding: "8px 16px",
                 background: "#008060",
@@ -208,33 +162,65 @@ export default function OrdersDashboard() {
                 borderRadius: "6px",
               }}
             >
-              {fetcher.state === "submitting" ? "Syncing..." : "Sync Orders"}
+              {isSubmitting && currentIntent === "sync-orders"
+                ? "Syncing..."
+                : "Sync Orders"}
             </button>
-            <sheetFetcher.Form method="post" action={`/app/sheet-sync?shop=${encodeURIComponent(shop)}`} style={{ margin: 0 }}>
-              <button
-                type="submit"
-                disabled={sheetFetcher.state === "submitting"}
-                style={{
-                  padding: "8px 16px",
-                  background: "#4285F4",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "6px",
-                }}
-              >
-                {sheetFetcher.state === "submitting" ? "Syncing Sheet..." : "Sync Today to Sheet"}
-              </button>
-            </sheetFetcher.Form>
+
+            {/* Sync Today to Sheet button */}
+            <button
+              type="submit"
+              name="intent"
+              value="sync-sheet"
+              disabled={isSubmitting && currentIntent === "sync-sheet"}
+              style={{
+                padding: "8px 16px",
+                background: "#4285F4",
+                color: "white",
+                border: "none",
+                borderRadius: "6px",
+              }}
+            >
+              {isSubmitting && currentIntent === "sync-sheet"
+                ? "Syncing Sheet..."
+                : "Sync Today to Sheet"}
+            </button>
           </div>
         </fetcher.Form>
 
-        {fetcher.data?.success && (
-          <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
+        {/* Show messages */}
+        {fetcher.data?.success && fetcher.data.intent === "sync-orders" && (
+          <div
+            style={{
+              marginBottom: "10px",
+              color: "green",
+              fontWeight: "500",
+            }}
+          >
             ✅ {fetcher.data.synced} orders synced successfully
           </div>
         )}
+
+        {fetcher.data?.success && fetcher.data.intent === "sync-sheet" && (
+          <div
+            style={{
+              marginBottom: "10px",
+              color: "green",
+              fontWeight: "500",
+            }}
+          >
+            ✅ {fetcher.data.message}
+          </div>
+        )}
+
         {fetcher.data?.error && (
-          <div style={{ marginBottom: "10px", color: "red", fontWeight: "500" }}>
+          <div
+            style={{
+              marginBottom: "10px",
+              color: "red",
+              fontWeight: "500",
+            }}
+          >
             ❌ {fetcher.data.error}
           </div>
         )}

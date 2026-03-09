@@ -1,21 +1,38 @@
 // app/routes/app._index.jsx
-import { authenticate, syncOrders } from "../shopify.server";
+import { authenticate, syncOrders, syncSheetForToday  } from "../shopify.server";
 import prisma from "../db.server";
 import OrdersDashboard from "../components/OrdersDashboard"; // ✅ import the component
 
 /* =========================
-   ACTION (Sync Orders)
+   ACTION (Sync Orders / Sync Sheet)
 ========================= */
 export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
     const formData = await request.formData();
 
+    const intent = formData.get("intent") || "sync-orders";
+
+    if (intent === "sync-sheet") {
+      // Just enqueue the sheet sync for this shop
+      await syncSheetForToday(session.shop);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Sheet sync started",
+          intent,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Default: sync orders (existing logic)
     const options = {
-      fetchLimit: parseInt(formData.get('fetchLimit') || '100', 10),
-      reportLimit: parseInt(formData.get('reportLimit') || '10', 10),
-      fraudspyEnabled: formData.get('fraudspyEnabled') === 'on', // checkbox returns 'on' if checked
-      steadfastEnabled: formData.get('steadfastEnabled') === 'on',
+      fetchLimit: parseInt(formData.get("fetchLimit") || "100", 10),
+      reportLimit: parseInt(formData.get("reportLimit") || "10", 10),
+      fraudspyEnabled: formData.get("fraudspyEnabled") === "on",
+      steadfastEnabled: formData.get("steadfastEnabled") === "on",
       // allSources: formData.get('allSources') === 'on',
     };
 
@@ -28,14 +45,14 @@ export const action = async ({ request }) => {
 
     const count = await syncOrders(session, admin, options);
     return new Response(
-      JSON.stringify({ success: true, synced: count }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ success: true, synced: count, intent }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
-    console.error("❌ Sync orders failed:", error);
+    console.error("❌ /app action failed:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 };
