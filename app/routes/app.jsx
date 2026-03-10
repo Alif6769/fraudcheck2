@@ -24,13 +24,15 @@ import enTranslations from "@shopify/polaris/locales/en.json";
 
 import { authenticate } from "../shopify.server";
 
+// Server loader: authenticate admin, return API key used by ShopifyAppProvider
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData(); // <-- plain JS, no <typeof loader>
+  // IMPORTANT: in .jsx, no TypeScript generic here
+  const { apiKey } = useLoaderData();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -56,7 +58,10 @@ export default function App() {
   );
 
   return (
-    <ShopifyAppProvider isEmbedded apiKey={apiKey}>
+    <ShopifyAppProvider
+      isEmbedded
+      apiKey={apiKey}
+    >
       <PolarisAppProvider i18n={enTranslations}>
         <Frame navigation={navigationMarkup}>
           <Outlet />

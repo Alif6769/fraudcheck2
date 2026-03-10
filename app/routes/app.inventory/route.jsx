@@ -69,13 +69,14 @@ export default function InventoryLayout() {
     </Navigation>
   );
 
-  // This content is rendered INSIDE the Frame defined in app.jsx
+  // This content is rendered inside the Frame defined in app.jsx
   return (
     <Page
       title="Inventory"
-      secondaryActions={[]} // or any actions you want
+      // Add top-right page actions if you want; can be left empty
+      secondaryActions={[]}
     >
-      {/* You can render the navigation somewhere appropriate inside the page */}
+      {/* Sub‑navigation for the inventory section */}
       {navigationMarkup}
 
       {/* Child routes: product-mapping, todays-inventory, etc. */}
