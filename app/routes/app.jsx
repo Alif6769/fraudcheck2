@@ -1,79 +1,32 @@
-// app/routes/app.jsx
-import {
-  Outlet,
-  useLoaderData,
-  useNavigate,
-  useLocation,
-  useRouteError,
-} from "react-router";
-
+import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-
-import {
-  AppProvider as ShopifyAppProvider,
-} from "@shopify/shopify-app-react-router/react";
-
-import {
-  AppProvider as PolarisAppProvider,
-  Frame,
-  Navigation,
-} from "@shopify/polaris";
-
-import { HomeIcon, InventoryIcon } from "@shopify/polaris-icons";
-import enTranslations from "@shopify/polaris/locales/en.json";
-
+import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
 
-// Server loader: authenticate admin, return API key used by ShopifyAppProvider
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
+
+  // eslint-disable-next-line no-undef
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {
-  // IMPORTANT: in .jsx, no TypeScript generic here
   const { apiKey } = useLoaderData();
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  const navigationItems = [
-    {
-      label: "Home",
-      icon: HomeIcon,
-      onClick: () => navigate("/app"),
-      selected: location.pathname === "/app",
-    },
-    {
-      label: "Inventory",
-      icon: InventoryIcon,
-      onClick: () => navigate("/app/inventory"),
-      selected: location.pathname.startsWith("/app/inventory"),
-    },
-  ];
-
-  const navigationMarkup = (
-    <Navigation location={location.pathname}>
-      <Navigation.Section items={navigationItems} />
-    </Navigation>
-  );
 
   return (
-    <ShopifyAppProvider
-      isEmbedded
-      apiKey={apiKey}
-    >
-      <PolarisAppProvider i18n={enTranslations}>
-        <Frame navigation={navigationMarkup}>
-          <Outlet />
-        </Frame>
-      </PolarisAppProvider>
-    </ShopifyAppProvider>
+    <AppProvider embedded apiKey={apiKey}>
+      <s-app-nav>
+        <s-link href="/app">Home</s-link>
+        <s-link href="/app/inventory">Inventory</s-link>
+      </s-app-nav>
+      <Outlet />
+    </AppProvider>
   );
 }
 
+// Shopify needs React Router to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {
-  const error = useRouteError();
-  return boundary.error(error);
+  return boundary.error(useRouteError());
 }
 
 export const headers = (headersArgs) => {
