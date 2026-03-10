@@ -1,6 +1,7 @@
-import { Outlet, useNavigate, useLocation, redirect } from "react-router";
-import { Frame, Navigation } from "@shopify/polaris";
+import { Outlet, NavLink, useNavigate, useLocation, redirect } from "react-router";
+import { Card, Navigation as PolarisNavigation } from "@shopify/polaris";
 import {
+  ProductIcon,
   InventoryIcon,
   OrderIcon,
   ChartVerticalIcon
@@ -8,7 +9,6 @@ import {
 
 export async function loader({ request }) {
   const url = new URL(request.url);
-  // Redirect from /app/inventory to the first tab
   if (url.pathname === "/app/inventory") {
     return redirect("/app/inventory/product-mapping");
   }
@@ -22,7 +22,7 @@ export default function InventoryLayout() {
   const navItems = [
     {
       label: "Product Mapping",
-      icon: InventoryIcon,
+      icon: ProductIcon,
       onClick: () => navigate("product-mapping"),
       selected: location.pathname.includes("/product-mapping"),
     },
@@ -46,18 +46,16 @@ export default function InventoryLayout() {
     },
   ];
 
-  const navigationMarkup = (
-    <Navigation location={location.pathname}>
-      <Navigation.Section
-        title="Inventory Management"
-        items={navItems}
-      />
-    </Navigation>
-  );
-
   return (
-    <Frame showTopBar={false} navigation={navigationMarkup}>
-      <Outlet />
-    </Frame>
+    <div style={{ display: "flex", gap: "20px" }}>
+      <Card style={{ width: "240px", padding: "10px" }}>
+        <PolarisNavigation location={location.pathname}>
+          <PolarisNavigation.Section items={navItems} />
+        </PolarisNavigation>
+      </Card>
+      <div style={{ flex: 1 }}>
+        <Outlet />
+      </div>
+    </div>
   );
 }
