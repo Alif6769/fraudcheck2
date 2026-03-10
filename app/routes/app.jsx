@@ -1,10 +1,29 @@
-import { Outlet, useLoaderData, useNavigate, useLocation, Link } from "react-router";
+import {
+  Outlet,
+  useLoaderData,
+  useNavigate,
+  useLocation,
+  Link,
+  useRouteError,
+} from "react-router"; // or "@remix-run/react" if that's your setup
+
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { Frame, Navigation, TopBar } from "@shopify/polaris";
+
+import {
+  AppProvider as ShopifyAppProvider,
+} from "@shopify/shopify-app-react-router/react";
+
+import {
+  AppProvider as PolarisAppProvider,
+  Frame,
+  Navigation,
+  TopBar,
+} from "@shopify/polaris";
+
 import { HomeIcon, InventoryIcon } from "@shopify/polaris-icons";
+import enTranslations from "@shopify/polaris/locales/en.json";
+
 import { authenticate } from "../shopify.server";
-import enTranslations from '@shopify/polaris/locales/en.json';
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -12,7 +31,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData();
+  const { apiKey } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -38,16 +57,19 @@ export default function App() {
   );
 
   return (
-    <AppProvider i18n={enTranslations}>
-      <Frame navigation={navigationMarkup}>
-        <Outlet />
-      </Frame>
-    </AppProvider>
+    <ShopifyAppProvider isEmbedded apiKey={apiKey}>
+      <PolarisAppProvider i18n={enTranslations}>
+        <Frame navigation={navigationMarkup}>
+          <Outlet />
+        </Frame>
+      </PolarisAppProvider>
+    </ShopifyAppProvider>
   );
 }
 
 export function ErrorBoundary() {
-  return boundary.error(useRouteError());
+  const error = useRouteError();
+  return boundary.error(error);
 }
 
 export const headers = (headersArgs) => {
