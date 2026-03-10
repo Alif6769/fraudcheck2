@@ -1,5 +1,3 @@
-// app/routes/app.inventory/route.jsx
-
 import { Outlet, NavLink, redirect } from "react-router";
 
 export async function loader({ request }) {
@@ -22,8 +20,7 @@ export default function InventoryLayout() {
   ];
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left sidebar navigation */}
+    <div className="min-h-screen flex">   {/* ← use min-h-screen instead of h-full */}
       <div className="w-64 border-r p-4 bg-gray-50 sticky top-0 h-screen">
         <h2 className="text-lg font-bold mb-4">Inventory Management</h2>
         <nav className="space-y-2">
@@ -43,7 +40,7 @@ export default function InventoryLayout() {
         </nav>
       </div>
 
-      {/* Main content: nested routes render here */}
+      {/* Main content */}
       <div className="flex-1 p-4 overflow-auto">
         <Outlet />
       </div>
