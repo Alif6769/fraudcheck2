@@ -1,6 +1,6 @@
 import { useLoaderData, useFetcher, redirect } from 'react-router';
 import { Page, Card, Button, IndexTable, useIndexResourceState, Text, Badge } from '@shopify/polaris';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import prisma from '../../db.server';
 
 export async function loader() {
