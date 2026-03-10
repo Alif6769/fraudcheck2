@@ -32,9 +32,12 @@
     "@react-router/node": "^7.12.0",
     "@react-router/serve": "^7.12.0",
     "@shopify/app-bridge-react": "^4.2.4",
+    "@shopify/polaris": "^13.9.5",
+    "@shopify/polaris-icons": "^9.3.1",
     "@shopify/shopify-app-react-router": "^1.1.0",
     "@shopify/shopify-app-session-storage-prisma": "^8.0.0",
     "@tailwindcss/postcss": "^4.2.1",
+    "autoprefixer": "^10.4.27",
     "axios": "^1.13.6",
     "axios-cookiejar-support": "^6.0.5",
     "bullmq": "^5.70.4",
@@ -44,15 +47,14 @@
     "ioredis": "^5.10.0",
     "isbot": "^5.1.31",
     "pg": "^8.19.0",
+    "postcss": "^8.5.8",
     "prisma": "^6.16.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "^7.12.0",
+    "tailwindcss": "^4.2.1",
     "telegram": "^2.26.22",
     "tough-cookie": "^6.0.0",
-    "tailwindcss": "^4.2.1",
-    "postcss": "^8.5.8",
-    "autoprefixer": "^10.4.27",
     "vite-tsconfig-paths": "^5.1.4"
   },
   "devDependencies": {
@@ -64,7 +66,6 @@
     "@types/react-dom": "^18.3.7",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
-    
     "eslint": "^8.57.1",
     "eslint-import-resolver-typescript": "^3.10.1",
     "eslint-plugin-import": "^2.32.0",
@@ -72,9 +73,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^4.6.2",
     "graphql-config": "^5.1.1",
-    
     "prettier": "^3.6.2",
-    
     "typescript": "^5.9.3",
     "vite": "^6.3.6"
   },

@@ -67,36 +67,61 @@ model ShopSettings {
   updatedAt        DateTime @updatedAt
 }
 
+// Product table
 model Product {
-  id                    String           @id @default(cuid())
-  productId             String           @unique
-  productName           String
-  price                 Float?
-  inventoryCategory     String?
-  productCategory       String?
-  shortForm             String?
-  isCombo               Boolean          @default(false)
-  rawProductFlag        Boolean          @default(false)
-  isDuplicate           Boolean          @default(false)
-  rootProductId         String? // ID of the root product if this is a duplicate
-  comboReference        String? // JSON array of { productId, quantity }
-  inventoryWarningLevel Int?
-  baseDatetime          DateTime?
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
-  inventoryDaily        InventoryDaily[]
-  adjustments           Adjustment[]
+  id               String               @id @default(cuid())
+  productId        String               @unique
+  productName      String
+  price            Float?
+  quantity         Int                  @default(0)  // current stock
+  description      String?
+  inventoryCategory String?
+  productCategory   String?
+  isCombo          Boolean              @default(false)
+  rawProductFlag   Boolean              @default(false)
+  isDuplicate      Boolean  @default(false)
+  rootProductId    String?                        // for duplicate products
+  comboReference   Json?                          // for combo products
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  baseDatetime     DateTime?
+
+  // Relation to all transactions
+  transactions     ProductTransaction[]
+
+  // Optional: daily inventory summaries
+  InventoryDaily   InventoryDaily[]
 }
 
+// Enum for transaction types
+enum TransactionType {
+  SALE
+  RETURN
+  DAMAGE
+  MANUAL_SALE
+}
+
+// Transaction table
+model ProductTransaction {
+  id        String          @id @default(cuid())
+  productId String
+  type      TransactionType
+  quantity  Int
+  timestamp DateTime        @default(now())
+
+  product   Product         @relation(fields: [productId], references: [productId], onDelete: Cascade)
+}
+
+// Daily summary table
 model InventoryDaily {
   id               String   @id @default(cuid())
   productId        String
-  date             DateTime // date only (store as date)
-  sold             Int      @default(0)
-  returned         Int      @default(0)
-  damaged          Int      @default(0)
-  closingInventory Int      @default(0)
-  product          Product  @relation(fields: [productId], references: [productId], onDelete: Cascade)
+  date             DateTime  // only store date, ignore time
+  sold             Int       @default(0)
+  returned         Int       @default(0)
+  damaged          Int       @default(0)
+  closingInventory Int
+  product          Product   @relation(fields: [productId], references: [productId], onDelete: Cascade)
 
   @@unique([productId, date])
 }
@@ -106,13 +131,3 @@ model ProcessedFulfillment {
   processedAt DateTime @default(now())
 }
 
-model Adjustment {
-  id        String   @id @default(cuid())
-  productId String
-  date      DateTime
-  type      String // 'return' or 'damage'
-  quantity  Int
-  note      String?
-  createdAt DateTime @default(now())
-  product   Product  @relation(fields: [productId], references: [productId])
-}
