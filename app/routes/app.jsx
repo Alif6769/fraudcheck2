@@ -5,7 +5,7 @@ import {
   useLocation,
   Link,
   useRouteError,
-} from "react-router"; // or "@remix-run/react" if that's your setup
+} from "react-router";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -17,7 +17,6 @@ import {
   AppProvider as PolarisAppProvider,
   Frame,
   Navigation,
-  TopBar,
 } from "@shopify/polaris";
 
 import { HomeIcon, InventoryIcon } from "@shopify/polaris-icons";
@@ -25,13 +24,15 @@ import enTranslations from "@shopify/polaris/locales/en.json";
 
 import { authenticate } from "../shopify.server";
 
+// Loader runs on the server to ensure the admin is authenticated
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  // IMPORTANT: no TypeScript generics in a .jsx file
+  const { apiKey } = useLoaderData();
   const navigate = useNavigate();
   const location = useLocation();
 
