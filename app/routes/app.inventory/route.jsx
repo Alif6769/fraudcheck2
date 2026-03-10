@@ -1,17 +1,31 @@
-import { Outlet, useNavigate, useLocation, redirect } from "react-router";
-import { Frame, Navigation } from "@shopify/polaris";
+// app/routes/app.inventory/route.jsx
+
+import {
+  Outlet,
+  useNavigate,
+  useLocation,
+  redirect,
+} from "react-router";
+
+import {
+  Navigation,
+  Page,
+} from "@shopify/polaris";
+
 import {
   InventoryIcon,
   OrderIcon,
-  ChartVerticalIcon
+  ChartVerticalIcon,
 } from "@shopify/polaris-icons";
 
 export async function loader({ request }) {
   const url = new URL(request.url);
+
   // Redirect from /app/inventory to the first tab
   if (url.pathname === "/app/inventory") {
     return redirect("/app/inventory/product-mapping");
   }
+
   return null;
 }
 
@@ -55,9 +69,17 @@ export default function InventoryLayout() {
     </Navigation>
   );
 
+  // This content is rendered INSIDE the Frame defined in app.jsx
   return (
-    <Frame showTopBar={false} navigation={navigationMarkup}>
+    <Page
+      title="Inventory"
+      secondaryActions={[]} // or any actions you want
+    >
+      {/* You can render the navigation somewhere appropriate inside the page */}
+      {navigationMarkup}
+
+      {/* Child routes: product-mapping, todays-inventory, etc. */}
       <Outlet />
-    </Frame>
+    </Page>
   );
 }
