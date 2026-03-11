@@ -360,7 +360,7 @@ export async function syncProducts(session, admin) {
     while (hasNextPage) {
       const response = await admin.graphql(PRODUCTS_QUERY, {
         variables: {
-          first: 50, // fetch 50 per page (max 250)
+          first: 100, // fetch 50 per page (max 250)
           after: cursor,
         },
       });
