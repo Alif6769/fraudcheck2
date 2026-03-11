@@ -30,7 +30,7 @@ export async function action({ request }) {
 
   if (actionType === "sync-products") {
     // TODO: your sync logic here
-    // e.g. call some syncProducts() function
+    const count = await syncProducts(session, admin);
     return { success: true, synced: true };
   }
 
