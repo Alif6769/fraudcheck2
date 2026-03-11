@@ -17,6 +17,7 @@ export async function loader() {
    ACTION – handles product deletion (and future sync)
 ========================= */
 export async function action({ request }) {
+    const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const actionType = formData.get("actionType");
 
@@ -24,6 +25,12 @@ export async function action({ request }) {
     const id = formData.get("id");
     await prisma.product.delete({ where: { id } });
     return { success: true };
+  }
+
+  if (actionType === "sync-products") {
+    // TODO: your sync logic here
+    // e.g. call some syncProducts() function
+    return { success: true, synced: true };
   }
 
   // You can add a "sync-products" actionType later if you need it.
@@ -141,9 +148,10 @@ export default function ProductMapping() {
                 variant="secondary"
                 loading={isSubmitting && currentAction === "sync-products"}
                 onClick={() => {
-                  // later you can implement sync logic:
-                  // fetcher.submit({ actionType: "sync-products" }, { method: "post" });
-                  alert("Sync products not implemented yet.");
+                  fetcher.submit(
+                    { actionType: "sync-products" },
+                    { method: "post" }
+                    );
                 }}
               >
                 Sync products
