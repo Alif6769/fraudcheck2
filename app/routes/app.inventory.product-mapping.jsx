@@ -2,6 +2,7 @@
 import { useLoaderData, useFetcher } from "react-router";
 import { useState, useEffect, useMemo } from "react";
 import prisma from "../db.server";
+import { authenticate, syncProducts } from "../../shopify.server"; // adjust path as needed
 
 /* =========================
    LOADER – fetches all products
