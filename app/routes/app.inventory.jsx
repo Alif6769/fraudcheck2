@@ -45,12 +45,27 @@ export default function InventoryLayout() {
                     style={{
                       width: "100%",
                       textAlign: "left",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      border: "none",
-                      backgroundColor: isActive ? "var(--p-color-bg-surface-selected)" : "transparent",
-                      color: "inherit",
+                      padding: "10px 16px",                // increased padding for larger click area
+                      borderRadius: "8px",                  // slightly larger radius
+                      border: "1px solid var(--p-color-border)", // added border using Polaris border color
+                      backgroundColor: isActive 
+                        ? "var(--p-color-bg-surface-selected)" 
+                        : "var(--p-color-bg-surface)",      // background for non‑active items
+                      color: "var(--p-color-text)",          // ensure text uses Polaris text color
+                      fontSize: "16px",                      // larger text (adjust as needed)
+                      fontWeight: "500",                     // medium weight for better readability
                       cursor: "pointer",
+                      transition: "background-color 0.2s, border-color 0.2s", // smooth hover
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.backgroundColor = "var(--p-color-bg-surface-hover)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.backgroundColor = "var(--p-color-bg-surface)";
+                      }
                     }}
                   >
                     {item.label}
