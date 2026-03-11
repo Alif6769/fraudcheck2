@@ -15,10 +15,9 @@ import { convert } from 'html-to-text';
 function cleanDescription(html) {
   if (!html) return '';
   return convert(html, {
-    wordwrap: 130, // optional line length
+    wordwrap: 130,
     selectors: [
-      { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
-      { selector: 'li', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+      { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } }
     ],
   }).trim();
 }
