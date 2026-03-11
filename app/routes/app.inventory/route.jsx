@@ -2,12 +2,9 @@ import { Outlet, NavLink, redirect } from "react-router";
 
 export async function loader({ request }) {
   const url = new URL(request.url);
-
-  // If the user hits /app/inventory exactly, redirect to the first tab
   if (url.pathname === "/app/inventory") {
     return redirect("/app/inventory/product-mapping");
   }
-
   return null;
 }
 
@@ -20,17 +17,22 @@ export default function InventoryLayout() {
   ];
 
   return (
-    <div className="min-h-screen flex">   {/* ← use min-h-screen instead of h-full */}
-      <div className="w-64 border-r p-4 bg-gray-50 sticky top-0 h-screen">
-        <h2 className="text-lg font-bold mb-4">Inventory Management</h2>
-        <nav className="space-y-2">
+    <div className="flex min-h-screen bg-gray-100">
+      {/* Sidebar */}
+      <div className="w-[200px] bg-white shadow-lg">
+        <div className="p-4 border-b">
+          <h1 className="text-lg font-semibold">Inventory</h1>
+        </div>
+        <nav className="p-2">
           {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `block p-2 rounded ${
-                  isActive ? "bg-blue-100" : "hover:bg-gray-200"
+                `block w-full text-left px-4 py-2 rounded-lg mb-1 transition-colors truncate ${
+                  isActive
+                    ? "bg-blue-500 text-white"
+                    : "hover:bg-gray-100"
                 }`
               }
             >
@@ -40,8 +42,8 @@ export default function InventoryLayout() {
         </nav>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 p-4 overflow-auto">
+      {/* Main Content */}
+      <div className="flex-1 p-6 overflow-auto">
         <Outlet />
       </div>
     </div>
