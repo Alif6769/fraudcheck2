@@ -325,8 +325,8 @@ export default function OrdersDashboard() {
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
                   <th style={{ ...thStyle, width: "150px" }}>Real Name</th>
-                  <th style={{ ...thStyle, width: "400px" }}>FraudSpy Report</th>
-                  <th style={{ ...thStyle, width: "180px" }}>Steadfast Report</th>
+                  <th style={{ ...thStyle, width: "250px" }}>FraudSpy Report</th>
+                  <th style={{ ...thStyle, width: "250px" }}>Steadfast Report</th>
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
                   <th style={{ ...thStyle, width: "130px" }}>Shipping Address</th>
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
@@ -376,7 +376,7 @@ export default function OrdersDashboard() {
                         <div
                           style={{
                             maxWidth: "100%",
-                            maxHeight: "80px",
+                            maxHeight: "150px",
                             overflow: "auto",
                             whiteSpace: "pre-wrap",
                             background: "#f5f5f5",

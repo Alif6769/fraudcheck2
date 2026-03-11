@@ -188,10 +188,21 @@ export default function ProductEdit() {
     };
 
     // Select dropdowns
-    const handleSelectChange = (field) => (event) => {
-    const value = event.currentTarget?.value ?? "";
-    setFormData((prev) => ({ ...prev, [field]: value }));
-    };
+    // const handleSelectChange = (field) => (event) => {
+    // const value = event.currentTarget?.value ?? "";
+    // setFormData((prev) => ({ ...prev, [field]: value }));
+    // };
+    const handleSelectChange = (field) => (valueOrEvent) => {
+        let value;
+        if (valueOrEvent?.currentTarget || valueOrEvent?.target) {
+            // It's an event
+            value = valueOrEvent.currentTarget?.value ?? valueOrEvent.target?.value ?? "";
+        } else {
+            // It's a direct value
+            value = valueOrEvent ?? "";
+        }
+        setFormData((prev) => ({ ...prev, [field]: value }));
+        };
 
     // Checkboxes
     const handleCheckboxChange = (field, othersToClear = []) => (event) => {
