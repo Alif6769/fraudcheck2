@@ -1,11 +1,5 @@
-import { Outlet, useNavigate, useLocation, redirect } from "react-router";
-import { Navigation, Card } from "@shopify/polaris";
-import {
-  ProductIcon,
-  InventoryIcon,
-  OrderIcon,
-  ChartVerticalIcon,
-} from "@shopify/polaris-icons";
+// app/routes/app.inventory.jsx
+import { Outlet, NavLink, redirect } from "react-router";
 
 export async function loader({ request }) {
   const url = new URL(request.url);
@@ -16,74 +10,62 @@ export async function loader({ request }) {
 }
 
 export default function InventoryLayout() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
   const navItems = [
-    {
-      label: "Product Mapping",
-      icon: ProductIcon,
-      onClick: () => navigate("product-mapping"),
-      selected: location.pathname.includes("/product-mapping"),
-    },
-    {
-      label: "Inventory Analysis",
-        icon: ChartVerticalIcon,
-        onClick: () => navigate("/inventory-analysis"),
-      selected: location.pathname.includes("/inventory-analysis"),
-    },
-    {
-      label: "Today's Inventory",
-        icon: InventoryIcon,
-        onClick: () => navigate("/todays-inventory"),
-      selected: location.pathname.includes("/todays-inventory"),
-    },
-    {
-      label: "Manual Sell",
-        icon: OrderIcon,
-        onClick: () => navigate("/manual-sell"),
-      selected: location.pathname.includes("/manual-sell"),
-    },
-    // {
-    //   label: "Return",
-    //     icon: OrderIcon,
-    //     onClick: () => navigate("/return"),
-    //   selected: location.pathname.includes("/return"),
-    // },
-    // {
-    //   label: "Damage",
-    //     icon: OrderIcon,
-    //     onClick: () => navigate("/damage"),
-    //   selected: location.pathname.includes("/damage"),
-    // },
+    { to: "product-mapping", label: "Product Mapping" },
+    { to: "todays-inventory", label: "Today's Inventory" },
+    { to: "manual-sell-return", label: "Manual Sell & Return" },
+    { to: "analysis", label: "Analysis" },
   ];
 
-  const navigationMarkup = (
-    <Navigation location={location.pathname}>
-      <Navigation.Section items={navItems} />
-    </Navigation>
-  );
-
   return (
-    // <Frame>  {/* ← Add Frame here */}
-      <s-page heading="Inventory" inlineSize="large">
-        <s-section padding="base">
-          <s-grid gridTemplateColumns="240px 1fr" gap="base">
-            <Card padding="0">
-              {navigationMarkup}
-            </Card>
-            <s-section padding="none">
-              <s-stack gap="base">
-                <s-stack direction="inline" gap="small">
-                  <s-link href="/app">Home</s-link>
-                  <s-link href="/app/inventory">Inventory</s-link>
-                </s-stack>
-                <Outlet />
+    <s-page heading="Inventory" inlineSize="large">
+      <s-section padding="base">
+        {/* 200px sidebar + main content using Polaris Grid */}
+        <s-grid gridTemplateColumns="200px 1fr" gap="base">
+          {/* Sidebar container */}
+          <s-box
+            background="base"
+            border="base"
+            borderRadius="base"
+            padding="small"
+          >
+            <s-heading>Inventory</s-heading>
+
+            {/* Nav items – we still use NavLink for routing, 
+                but layout is done via Polaris stack. */}
+            <s-stack gap="small" paddingBlockStart="small">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    [
+                      "block w-full text-left px-3 py-2 rounded",
+                      isActive ? "bg-black text-white" : "bg-transparent",
+                    ].join(" ")
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </s-stack>
+          </s-box>
+
+          {/* Main content area */}
+          <s-section padding="none">
+            <s-stack gap="base">
+              {/* Optional shared nav row for consistency with Home */}
+              <s-stack direction="inline" gap="small">
+                <s-link href="/app">Home</s-link>
+                <s-link href="/app/inventory">Inventory</s-link>
               </s-stack>
-            </s-section>
-          </s-grid>
-        </s-section>
-      </s-page>
-    // </Frame>
+
+              {/* Nested inventory routes (product-mapping, etc.) render here */}
+              <Outlet />
+            </s-stack>
+          </s-section>
+        </s-grid>
+      </s-section>
+    </s-page>
   );
 }
