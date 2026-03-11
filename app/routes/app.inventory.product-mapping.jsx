@@ -2,7 +2,111 @@
 import { useLoaderData, useFetcher } from "react-router";
 import { useState, useEffect, useMemo } from "react";
 import prisma from "../db.server";
-import { authenticate, syncProducts } from "../shopify.server"; // adjust path as needed
+import { authenticate} from "../shopify.server"; // adjust path as needed
+import { convert } from 'html-to-text';
+
+function cleanDescription(html) {
+  if (!html) return '';
+  return convert(html, {
+    wordwrap: 130, // optional line length
+    selectors: [
+      { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+      { selector: 'li', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+    ],
+  }).trim();
+}
+
+
+// ============================
+// SYNC PRODUCTS FUNCTION
+// ============================
+export async function syncProducts(session, admin) {
+  try {
+    console.log(`🔄 Syncing products for shop: ${session.shop}`);
+    let hasNextPage = true;
+    let cursor = null;
+    let syncedCount = 0;
+
+    const PRODUCTS_QUERY = `
+      query getProducts($first: Int!, $after: String) {
+        products(first: $first, after: $after) {
+          edges {
+            cursor
+            node {
+              id
+              title
+              descriptionHtml
+              createdAt
+              updatedAt
+              variants(first: 1) {
+                edges {
+                  node {
+                    price
+                  }
+                }
+              }
+            }
+          }
+          pageInfo {
+            hasNextPage
+          }
+        }
+      }
+    `;
+
+    while (hasNextPage) {
+      const response = await admin.graphql(PRODUCTS_QUERY, {
+        variables: {
+          first: 100, // fetch 50 per page (max 250)
+          after: cursor,
+        },
+      });
+
+      const { data } = await response.json();
+      const products = data?.products?.edges || [];
+      const pageInfo = data?.products?.pageInfo;
+
+      // Process each product
+      for (const { node } of products) {
+        // Extract first variant price (or fallback to 0)
+        const price = node.variants?.edges?.[0]?.node?.price
+          ? parseFloat(node.variants.edges[0].node.price)
+          : 0;
+
+        const cleanedDescription = cleanDescription(node.descriptionHtml);
+
+        await prisma.product.upsert({
+          where: { productId: node.id },
+          update: {
+            productName: node.title,
+            description: cleanedDescription, // store cleaned version
+            price,
+            updatedAt: new Date(),
+          },
+          create: {
+            productId: node.id,
+            productName: node.title,
+            description: cleanedDescription,
+            price,
+            quantity: 0,
+            createdAt: new Date(node.createdAt),
+            updatedAt: new Date(node.updatedAt),
+          },
+        });
+        syncedCount++;
+      }
+
+      hasNextPage = pageInfo?.hasNextPage || false;
+      cursor = products.length > 0 ? products[products.length - 1].cursor : null;
+    }
+
+    console.log(`✅ Synced ${syncedCount} products for ${session.shop}`);
+    return syncedCount;
+  } catch (error) {
+    console.error(`❌ Product sync failed for ${session.shop}:`, error);
+    throw error;
+  }
+}
 
 /* =========================
    LOADER – fetches all products
