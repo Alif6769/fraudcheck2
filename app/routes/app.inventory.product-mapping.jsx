@@ -1,7 +1,7 @@
 import { useLoaderData, useFetcher } from "react-router";
 import { Link, useNavigate } from "react-router";
 import { Page, Card, Button, IndexTable, useIndexResourceState, Text, Badge } from "@shopify/polaris";
-import prisma from "../../db.server";
+import prisma from "../db.server";
 
 // Loader – fetches all products from the database
 export async function loader() {
