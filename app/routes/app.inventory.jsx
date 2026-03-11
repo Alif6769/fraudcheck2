@@ -1,3 +1,4 @@
+// app/routes/app.inventory.jsx
 import { Outlet, useNavigate, useLocation, redirect } from "react-router";
 
 export async function loader({ request }) {
@@ -41,12 +42,12 @@ export default function InventoryLayout() {
                 return (
                   <s-clickable
                     key={item.to}
-                    // Let Polaris handle background/border
+                    // Use token-based background/border so it stays on-brand
                     background={isActive ? "base" : "transparent"}
                     border={isActive ? "base" : "none"}
                     borderRadius="base"
                     padding="small-300"
-                    // Use onClick with React Router
+                    // Clicking navigates to nested route
                     onClick={() => navigate(item.to)}
                   >
                     <s-text
