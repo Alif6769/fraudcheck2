@@ -29,7 +29,7 @@ export default function InventoryLayout() {
             borderRadius="base"
             padding="small"
           >
-            <s-heading>Inventory S</s-heading>
+            <s-heading>Inventory</s-heading>
 
             {/* Nav items – we still use NavLink for routing, 
                 but layout is done via Polaris stack. */}
