@@ -65,26 +65,25 @@ export default function InventoryLayout() {
   );
 
   return (
-    <s-page heading="Inventory" inlineSize="large">
-      <s-section padding="base">
-        <s-grid gridTemplateColumns="240px 1fr" gap="base">
-          {/* Sidebar with Polaris Navigation inside a Card */}
-          <Card padding="0">
-            {navigationMarkup}
-          </Card>
-
-          {/* Main content area */}
-          <s-section padding="none">
-            <s-stack gap="base">
-              <s-stack direction="inline" gap="small">
-                <s-link href="/app">Home</s-link>
-                <s-link href="/app/inventory">Inventory</s-link>
+    <Frame>  {/* ← Add Frame here */}
+      <s-page heading="Inventory" inlineSize="large">
+        <s-section padding="base">
+          <s-grid gridTemplateColumns="240px 1fr" gap="base">
+            <Card padding="0">
+              {navigationMarkup}
+            </Card>
+            <s-section padding="none">
+              <s-stack gap="base">
+                <s-stack direction="inline" gap="small">
+                  <s-link href="/app">Home</s-link>
+                  <s-link href="/app/inventory">Inventory</s-link>
+                </s-stack>
+                <Outlet />
               </s-stack>
-              <Outlet />
-            </s-stack>
-          </s-section>
-        </s-grid>
-      </s-section>
-    </s-page>
+            </s-section>
+          </s-grid>
+        </s-section>
+      </s-page>
+    </Frame>
   );
 }
