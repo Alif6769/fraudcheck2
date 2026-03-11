@@ -104,7 +104,7 @@ export const loader = async ({ request }) => {
 ========================= */
 export default function HomePage() {
   return (
-    <s-page heading="Orders dashboard">
+    <s-page heading="Orders dashboard" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
           {/* Simple app-level navigation row using Polaris links */}
