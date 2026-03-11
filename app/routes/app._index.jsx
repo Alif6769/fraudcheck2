@@ -1,7 +1,12 @@
 // app/routes/app._index.jsx
-import { authenticate, syncOrders, syncSheetForToday, clearSheetForShop } from "../shopify.server";
+import {
+  authenticate,
+  syncOrders,
+  syncSheetForToday,
+  clearSheetForShop,
+} from "../shopify.server";
 import prisma from "../db.server";
-import OrdersDashboard from "../components/OrdersDashboard"; // ✅ import the component
+import OrdersDashboard from "../components/OrdersDashboard";
 
 /* =========================
    ACTION (Sync Orders / Sync Sheet)
@@ -35,7 +40,7 @@ export const action = async ({ request }) => {
           message: "Sheet clear started",
           intent,
         }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
@@ -82,10 +87,10 @@ export const loader = async ({ request }) => {
     const settings = await prisma.shopSettings.findUnique({
       where: { shop: session.shop },
     });
-    return { 
-      orders, 
-      shop: session.shop, 
-      settings: settings || {}  // fallback to empty object if not found
+    return {
+      orders,
+      shop: session.shop,
+      settings: settings || {}, // fallback to empty object if not found
     };
   } catch (error) {
     console.error("❌ Loader error:", error);
@@ -94,9 +99,27 @@ export const loader = async ({ request }) => {
 };
 
 /* =========================
-   COMPONENT (now imported)
+   COMPONENT
+   Wrap OrdersDashboard with Polaris layout
 ========================= */
-export default OrdersDashboard; // ✅ re‑export the component
+export default function HomePage() {
+  return (
+    <s-page heading="Orders dashboard">
+      <s-section padding="base">
+        <s-stack gap="base">
+          {/* Simple app-level navigation row using Polaris links */}
+          <s-stack direction="inline" gap="small">
+            <s-link href="/app">Home</s-link>
+            <s-link href="/app/inventory">Inventory</s-link>
+          </s-stack>
+
+          {/* Your existing dashboard UI */}
+          <OrdersDashboard />
+        </s-stack>
+      </s-section>
+    </s-page>
+  );
+}
 
 /* =========================
    HEADERS (unchanged)
