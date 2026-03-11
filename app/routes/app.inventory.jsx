@@ -44,18 +44,18 @@ export default function InventoryLayout() {
         onClick: () => navigate("/manual-sell"),
       selected: location.pathname.includes("/manual-sell"),
     },
-    {
-      label: "Return",
-        icon: OrderIcon,
-        onClick: () => navigate("/return"),
-      selected: location.pathname.includes("/return"),
-    },
-    {
-      label: "Damage",
-        icon: OrderIcon,
-        onClick: () => navigate("/damage"),
-      selected: location.pathname.includes("/damage"),
-    },
+    // {
+    //   label: "Return",
+    //     icon: OrderIcon,
+    //     onClick: () => navigate("/return"),
+    //   selected: location.pathname.includes("/return"),
+    // },
+    // {
+    //   label: "Damage",
+    //     icon: OrderIcon,
+    //     onClick: () => navigate("/damage"),
+    //   selected: location.pathname.includes("/damage"),
+    // },
   ];
 
   const navigationMarkup = (
@@ -65,7 +65,7 @@ export default function InventoryLayout() {
   );
 
   return (
-    <Frame>  {/* ← Add Frame here */}
+    // <Frame>  {/* ← Add Frame here */}
       <s-page heading="Inventory" inlineSize="large">
         <s-section padding="base">
           <s-grid gridTemplateColumns="240px 1fr" gap="base">
@@ -84,6 +84,6 @@ export default function InventoryLayout() {
           </s-grid>
         </s-section>
       </s-page>
-    </Frame>
+    // </Frame>
   );
 }
