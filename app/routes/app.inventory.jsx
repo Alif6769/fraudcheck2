@@ -24,29 +24,52 @@ export default function InventoryLayout() {
       <s-section padding="base">
         <s-grid gridTemplateColumns="200px 1fr" gap="base">
           {/* Sidebar container */}
-          <s-box background="base" border="base" borderRadius="base" padding="small">
+          <s-box
+            background="base"
+            border="base"
+            borderRadius="base"
+            padding="small"
+          >
             <s-heading>Inventory</s-heading>
-            <s-navigation>
-              <s-navigation-section>
-                {navItems.map((item) => (
-                  <s-navigation-item
+
+            {/* Vertical nav list */}
+            <s-stack gap="small" paddingBlockStart="small">
+              {navItems.map((item) => {
+                const isActive = location.pathname.includes(item.to);
+
+                return (
+                  <button
                     key={item.to}
-                    label={item.label}
-                    selected={location.pathname.includes(item.to)}
+                    type="button"
                     onClick={() => navigate(item.to)}
-                  />
-                ))}
-              </s-navigation-section>
-            </s-navigation>
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "8px 12px",
+                      borderRadius: "6px",
+                      border: "none",
+                      backgroundColor: isActive ? "var(--p-color-bg-surface-selected)" : "transparent",
+                      color: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </s-stack>
           </s-box>
 
           {/* Main content area */}
           <s-section padding="none">
             <s-stack gap="base">
+              {/* Top-level app nav row */}
               <s-stack direction="inline" gap="small">
                 <s-link href="/app">Home</s-link>
                 <s-link href="/app/inventory">Inventory</s-link>
               </s-stack>
+
+              {/* Nested inventory routes render here */}
               <Outlet />
             </s-stack>
           </s-section>
