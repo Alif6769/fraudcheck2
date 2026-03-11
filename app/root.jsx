@@ -1,5 +1,6 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import './tailwind.css';
+import './styles/inventory.css';
 
 export default function App() {
   return (

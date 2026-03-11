@@ -19,21 +19,16 @@ export default function InventoryLayout() {
   return (
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
-      <div className="w-[200px] bg-white shadow-lg">
+      <div className="inventory-sidebar w-[200px] bg-white shadow-lg">
         <div className="p-4 border-b">
           <h1 className="text-lg font-semibold">Inventory</h1>
         </div>
         <nav className="p-2">
           {navItems.map((item) => (
             <NavLink
-              key={item.to}
               to={item.to}
               className={({ isActive }) =>
-                `block w-full text-left px-4 py-2 rounded-lg mb-1 transition-colors truncate ${
-                  isActive
-                    ? "bg-blue-500 text-white"
-                    : "hover:bg-gray-100"
-                }`
+                `block w-full text-left px-4 py-2 rounded-lg mb-1 truncate ${isActive ? 'active' : ''}`
               }
             >
               {item.label}

@@ -1,0 +1,20 @@
+.inventory-sidebar button {
+  background: transparent !important;        /* Override Polaris */
+  color: inherit !important;
+  text-align: left !important;
+  width: 100% !important;
+  padding: 0.5rem 1rem !important;
+  border-radius: 0.5rem !important;
+  margin-bottom: 0.25rem !important;
+  transition: all 0.2s !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+.inventory-sidebar button.active {
+  background-color: #3b82f6 !important;     /* Tailwind bg-blue-500 */
+  color: white !important;
+}
+.inventory-sidebar button:hover:not(.active) {
+  background-color: #f3f4f6 !important;     /* Tailwind hover:bg-gray-100 */
+}
