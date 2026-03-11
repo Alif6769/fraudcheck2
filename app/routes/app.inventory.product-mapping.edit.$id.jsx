@@ -181,46 +181,39 @@ export default function ProductEdit() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Because we're using web components, events are DOM Events.
-  const handleTextFieldInput = (field) => (event) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: event.currentTarget.value,
-    }));
-  };
+  // Text fields and inputs
+    const handleTextFieldInput = (field) => (event) => {
+    const value = event.currentTarget?.value ?? "";
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    };
 
-  const handleSelectChange = (field) => (event) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: event.currentTarget.value,
-    }));
-  };
+    // Select dropdowns
+    const handleSelectChange = (field) => (event) => {
+    const value = event.currentTarget?.value ?? "";
+    setFormData((prev) => ({ ...prev, [field]: value }));
+    };
 
-  const handleCheckboxChange = (field, othersToClear = []) => (event) => {
-    const checked = event.currentTarget.checked;
+    // Checkboxes
+    const handleCheckboxChange = (field, othersToClear = []) => (event) => {
+    const checked = event.currentTarget?.checked ?? false;
     setFormData((prev) => {
-      const updated = { ...prev, [field]: checked };
-      // Clear mutually exclusive flags
-      if (checked && othersToClear.length > 0) {
-        for (const other of othersToClear) {
-          updated[other] = false;
+        const updated = { ...prev, [field]: checked };
+        if (checked && othersToClear.length > 0) {
+        othersToClear.forEach((other) => (updated[other] = false));
         }
-      }
-      return updated;
+        return updated;
     });
-  };
+    };
 
-  const handleComboChange = (index, field) => (event) => {
-    const value = event.currentTarget.value;
+    // Combo fields (selects or text inputs)
+    const handleComboChange = (index, field) => (event) => {
+    const value = event.currentTarget?.value ?? "";
     setFormData((prev) => {
-      const next = [...prev.comboReference];
-      next[index] = {
-        ...next[index],
-        [field]: value,
-      };
-      return { ...prev, comboReference: next };
+        const next = [...prev.comboReference];
+        next[index] = { ...next[index], [field]: value };
+        return { ...prev, comboReference: next };
     });
-  };
+    };
 
   const addComboProduct = () => {
     setFormData((prev) => ({
