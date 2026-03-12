@@ -39,6 +39,8 @@ model Order {
   orderName       String   @unique
   shop            String
   orderTime       DateTime
+  fulfilledAt     DateTime? // when the order was marked fulfilled
+  fulfillmentStatus String? // e.g., "fulfilled", "partial", "unfulfilled"
   customerId      String?
   firstName       String?
   lastName        String?
