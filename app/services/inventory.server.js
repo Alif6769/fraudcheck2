@@ -66,8 +66,7 @@ function computeEffectiveRange(requestedFrom, requestedTo, existingRange) {
     };
   }
 
-  // All other overlapping weird cases (e.g. partial overlap) -
-  // You can refine this if needed; for now treat as nothing extra to do.
+  // All other overlapping weird cases – treat as nothing extra to do for now.
   return {
     effectiveFrom: null,
     effectiveTo: null,
@@ -88,12 +87,15 @@ function computeEffectiveRange(requestedFrom, requestedTo, existingRange) {
  * @returns {Promise<number>} number of orders synced
  */
 export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDate) {
-  console.log(`🔄 Syncing fulfilled orders from Shopify for shop=${session.shop} from ${fromDate.toISOString()} to ${toDate.toISOString()}`);
+  console.log(
+    `🔄 Syncing fulfilled orders from Shopify for shop=${session.shop} from ${fromDate.toISOString()} to ${toDate.toISOString()}`
+  );
 
   let hasNextPage = true;
   let cursor = null;
   let syncedCount = 0;
 
+  // ✅ FIXED: fulfillments is a simple list, not a connection with edges
   const QUERY = `
     query getFulfilledOrders($first: Int!, $after: String, $query: String!) {
       orders(first: $first, after: $after, query: $query) {
@@ -108,14 +110,10 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
             cancelledAt
             displayFulfillmentStatus
             fulfillments(first: 10) {
-              edges {
-                node {
-                  id
-                  status
-                  createdAt
-                  updatedAt
-                }
-              }
+              id
+              status
+              createdAt
+              updatedAt
             }
             lineItems(first: 50) {
               edges {
@@ -163,19 +161,27 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
     const response = await admin.graphql(QUERY, {
       variables: { first: 50, after: cursor, query: queryString },
     });
-    const { data } = await response.json();
+
+    const { data, errors } = await response.json();
+
+    if (errors) {
+      console.error("❌ Shopify Admin GraphQL errors in getFulfilledOrders:", errors);
+      throw new Error("Failed to fetch orders from Shopify Admin API");
+    }
+
     const orders = data?.orders?.edges || [];
     const pageInfo = data?.orders?.pageInfo;
 
     for (const { node } of orders) {
-      // Determine fulfillment time: use the latest fulfillment's createdAt if available
-      const fulfillments = node.fulfillments?.edges || [];
+      // ✅ FIXED: fulfillments is now a flat array, not edges
+      const fulfillments = node.fulfillments || [];
       let fulfilledAt = null;
+
       if (fulfillments.length > 0) {
         // Take the most recent fulfillment date
         fulfilledAt = new Date(
           fulfillments
-            .map(f => new Date(f.node.createdAt))
+            .map((f) => new Date(f.createdAt))
             .reduce((a, b) => (a > b ? a : b))
         );
       } else {
@@ -185,8 +191,8 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
 
       const fulfillmentStatus = node.displayFulfillmentStatus; // e.g., "FULFILLED"
 
-      // Build productIds array
-      const productIds = (node.lineItems?.edges || []).map(item => ({
+      // Build productIds array from lineItems edges
+      const productIds = (node.lineItems?.edges || []).map((item) => ({
         productId: item.node.product?.id || null,
         variantId: item.node.variant?.id || null,
         title: item.node.title,
@@ -207,12 +213,15 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
         lastName: node.customer?.lastName || null,
         contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber || null,
         shippingPhone: node.shippingAddress?.phone || null,
-        shippingAddress: node.shippingAddress ? JSON.stringify(node.shippingAddress) : null,
+        shippingAddress: node.shippingAddress
+          ? JSON.stringify(node.shippingAddress)
+          : null,
         totalPrice: String(node.totalPriceSet?.shopMoney?.amount ?? "0"),
         shippingFee: String(
-          node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ?? "0"
+          node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney
+            ?.amount ?? "0"
         ),
-        products: JSON.stringify(productIds),   // keep for backward compatibility
+        products: JSON.stringify(productIds), // keep for backward compatibility
         productIds: JSON.stringify(productIds), // new field
         shop: session.shop,
       };
@@ -234,6 +243,7 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
       } else {
         await prisma.order.create({ data: orderData });
       }
+
       syncedCount++;
     }
 
@@ -250,7 +260,7 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
  *
  * Steps:
  * 1. Determine effective [from, to] range based on previously-processed range.
- * 2. Update orders in that range: set fulfilledAt & fulfillmentStatus.
+ * 2. Fetch orders with fulfillmentStatus="fulfilled" and fulfilledAt within the effective window.
  * 3. Create product transactions:
  *    - Prefer order.productIds (if present), otherwise fall back to products JSON by title.
  *    - Handle raw products, duplicates, combos as before.
@@ -264,7 +274,8 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
  *   processedOrders: number,
  *   transactionsCreated: number,
  *   effectiveFrom: Date | null,
- *   effectiveTo: Date | null
+ *   effectiveTo: Date | null,
+ *   range: any
  * }>}
  */
 export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
@@ -297,52 +308,25 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
         transactionsCreated: 0,
         effectiveFrom: null,
         effectiveTo: null,
+        range: existingRange ?? null,
       };
     }
 
     console.log(
-      `⏱ Effective processing window for shop=${shop}: ` +
-        `${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()}`
+      `⏱ Effective processing window for shop=${shop}: ${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()}`
     );
 
-    // // 2) Update orders in that time window:
-    // //    Set fulfillmentStatus="fulfilled" and fulfilledAt = orderTime
-    // //    We filter by orderTime in that window and not already fulfilled.
-    // const updated = await tx.order.updateMany({
-    //   where: {
-    //     shop,
-    //     orderTime: {
-    //       gte: effectiveFrom,
-    //       lte: effectiveTo,
-    //     },
-    //     OR: [
-    //       { fulfillmentStatus: null },
-    //       { fulfillmentStatus: { not: "fulfilled" } },
-    //     ],
-    //   },
-    //   data: {
-    //     fulfillmentStatus: "fulfilled",
-    //     // You could also set this to new Date() if you prefer "actual processing time"
-    //     fulfilledAt: prisma.$sql`"orderTime"`,
-    //   },
-    // });
-
-    // console.log(
-    //   `✏️ Marked ${updated.count} orders as fulfilled in the window for shop=${shop}`
-    // );
-
-    // 3) Now fetch orders that are fulfilled in that window (for product transactions)
-    // Now fetch orders that are marked as fulfilled within the effective range
+    // 3) Fetch orders that are fulfilled in that window (for product transactions)
     const orders = await tx.order.findMany({
-        where: {
-            shop,
-            fulfillmentStatus: "fulfilled",
-            fulfilledAt: {
-            gte: effectiveFrom,
-            lte: effectiveTo,
-            },
+      where: {
+        shop,
+        fulfillmentStatus: "fulfilled",
+        fulfilledAt: {
+          gte: effectiveFrom,
+          lte: effectiveTo,
         },
-        orderBy: { orderTime: "asc" },
+      },
+      orderBy: { orderTime: "asc" },
     });
 
     console.log(`📦 Found ${orders.length} fulfilled orders in the window`);
@@ -523,7 +507,6 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
         data: {
           fromDateTime: newFromForRange,
           toDateTime: newToForRange,
-          // You can choose to add or overwrite count. Here we overwrite to represent total.
           processedOrdersCount:
             existingRange.processedOrdersCount + processedOrders,
           processedOrderNameFrom:
@@ -535,13 +518,12 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
     }
 
     console.log(
-      `✅ Created ${transactionsCreated} transactions for ${processedOrders} orders ` +
-        `in window ${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()} for shop=${shop}`
+      `✅ Created ${transactionsCreated} transactions for ${processedOrders} orders in window ${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()} for shop=${shop}`
     );
 
     const finalRange = await tx.processedOrderRange.findFirst({
-        where: { shop },
-        orderBy: { id: "desc" },
+      where: { shop },
+      orderBy: { id: "desc" },
     });
 
     return {
