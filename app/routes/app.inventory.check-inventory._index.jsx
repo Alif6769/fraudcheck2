@@ -2,7 +2,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { syncFulfilledOrdersForRange, processFulfilledOrdersWithRange } from "../../services/inventory.server";
+import { syncFulfilledOrdersForRange, processFulfilledOrdersWithRange } from "../services/inventory.server";
 
 // Loader to fetch products (raw or combo)
 export async function loader() {
