@@ -320,7 +320,7 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
     const orders = await tx.order.findMany({
       where: {
         shop,
-        fulfillmentStatus: "FULLFILLED",
+        fulfillmentStatus: "FULFILLED",
         fulfilledAt: {
           gte: effectiveFrom,
           lte: effectiveTo,
