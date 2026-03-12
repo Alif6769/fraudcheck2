@@ -1,10 +1,47 @@
-import { useFetcher } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+import { syncFulfilledOrdersForRange, processFulfilledOrdersWithRange } from "../../services/inventory.server";
 
-// Optional: existing server-side logic, left mostly unchanged
+// Loader to fetch products (raw or combo)
+export async function loader() {
+  const products = await prisma.product.findMany({
+    where: {
+      OR: [
+        { rawProductFlag: true },
+        { isCombo: true },
+        // Alternatively, filter by inventoryCategory:
+        // { inventoryCategory: { in: ["rawProducts", "comboProducts"] } }
+      ],
+    },
+    orderBy: { productName: "asc" },
+  });
+  return { products };
+}
+
+// Helper: Convert local datetime string to UTC Date
+function localToUTC(localDateTimeString) {
+  // Create a Date object from the local string (browser interprets it as local time)
+  const localDate = new Date(localDateTimeString);
+  // Get the UTC timestamp directly
+  return new Date(localDate.toISOString());
+}
+
+// Helper: Format UTC date for display in local timezone
+function formatForDisplay(utcDate, timeZone = 'Asia/Dhaka') {
+  return utcDate.toLocaleString('en-US', { 
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 export async function action({ request }) {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const from = formData.get("from");
   const to = formData.get("to");
@@ -13,86 +50,66 @@ export async function action({ request }) {
     return new Response("Missing date range", { status: 400 });
   }
 
-  // NOTE: The client-side UI now collects separate date + time pieces.
-  // You will likely want to parse and combine them here into Date objects
-  // in your shop's timezone (for example, Asia/Dhaka for BD time).
-  // The current implementation still assumes full ISO strings in `from`/`to`.
+  // const requestedFrom = new Date(from);
+  // const requestedTo = new Date(to);
+  // requestedTo.setHours(23, 59, 59, 999);
+  const requestedFrom = localToUTC(from);
+  const requestedTo = localToUTC(to);
 
-  const fromDate = new Date(from.toString());
-  const toDate = new Date(to.toString());
-  toDate.setHours(23, 59, 59, 999);
+  // 1. Sync fulfillment data from Shopify for the requested range
+  await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
 
-  // const result = await processFulfilledOrders(fromDate, toDate);
-
-  // Placeholder result until you wire up real logic
-  const result = {
-    processedOrders: 0,
-    transactionsCreated: 0,
-  };
+  // 2. Process transactions using the effective range logic (now with updated orders)
+  const result = await processFulfilledOrdersWithRange(requestedFrom, requestedTo, session.shop);
 
   return { success: true, ...result };
 }
 
-// --- UI component ---------------------------------------------------------
-
-const INITIAL_PRODUCT_ROWS = [
-  {
-    id: "1",
-    name: "Sample product A",
-    fromDate: "",
-    fromTime: "",
-    toDate: "",
-    toTime: "",
-  },
-  {
-    id: "2",
-    name: "Sample product B",
-    fromDate: "",
-    fromTime: "",
-    toDate: "",
-    toTime: "",
-  },
-];
-
 export default function CheckInventory() {
+  const { products } = useLoaderData();
   const fetcher = useFetcher();
 
-  // Top-level date range (for all products)
+  // Top-level date range
   const [fromDate, setFromDate] = useState("");
   const [fromTime, setFromTime] = useState("00:00");
   const [toDate, setToDate] = useState("");
   const [toTime, setToTime] = useState("23:59");
 
-  // Per-product ranges for the table
-  const [productRows, setProductRows] = useState(INITIAL_PRODUCT_ROWS);
+  // Per‑product rows – initialised from loader products
+  const [productRows, setProductRows] = useState(
+    products.map((product) => ({
+      id: product.id,
+      name: product.productName,
+      fromDate: "",
+      fromTime: "",
+      toDate: "",
+      toTime: "",
+    }))
+  );
 
   const handleProcessAll = () => {
-    // NOTE: This is intentionally light on business logic.
-    // Right now we just submit the raw combined strings.
     const formData = new FormData();
-
     if (fromDate) {
       formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     }
     if (toDate) {
       formData.set("to", `${toDate}T${toTime || "23:59"}`);
     }
-
     fetcher.submit(formData, { method: "post" });
   };
 
   const isSubmitting = fetcher.state === "submitting";
 
+  const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
+    const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
+    const toStr = toDate ? `${toDate}T${toTime || "23:59"}` : null;
+    console.log(`Search product ${productId} from ${fromStr} to ${toStr}`);
+    alert(`Per‑product search not yet implemented. Selected range: ${fromStr} – ${toStr}`);
+  };
+
   const handleProductFieldChange = (id, field, value) => {
     setProductRows((rows) =>
-      rows.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              [field]: value,
-            }
-          : row
-      )
+      rows.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
   };
 
@@ -100,20 +117,16 @@ export default function CheckInventory() {
     <s-page heading="Check inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Warning that this UI is not fully wired yet */}
-          <s-banner tone="warning">
-            This screen only provides the UI for selecting date and time ranges.
-            The server-side logic to combine dates, times, and handle time
-            zones (for example, BD time vs the shop's timezone) still needs to
-            be implemented.
+          {/* Informational banner */}
+          <s-banner tone="info">
+            Select a date range and click "Process orders" to sync fulfillment data and create product transactions.
           </s-banner>
 
           {/* Global date range controls */}
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
-
             <s-stack direction="inline" gap="small" alignItems="center">
-              {/* From date + time */}
+              {/* From */}
               <s-stack gap="small">
                 <s-text type="strong">From</s-text>
                 <s-stack direction="inline" gap="small" alignItems="center">
@@ -135,7 +148,7 @@ export default function CheckInventory() {
                 </s-stack>
               </s-stack>
 
-              {/* To date + time */}
+              {/* To */}
               <s-stack gap="small">
                 <s-text type="strong">To</s-text>
                 <s-stack direction="inline" gap="small" alignItems="center">
@@ -167,32 +180,41 @@ export default function CheckInventory() {
             </s-stack>
           </s-stack>
 
-          {/* Success / error banners from the fetcher */}
-          {fetcher.data?.success && (
+          {/* Success banner with detailed range info */}
+          {fetcher.data?.success && fetcher.data.range && (
             <s-banner tone="success">
-              Processed {fetcher.data.processedOrders} orders, created{" "}
-              {fetcher.data.transactionsCreated} transactions.
+              <s-stack gap="small">
+                <s-text>✅ Successfully processed orders!</s-text>
+                <s-text>
+                  Date range: {new Date(fetcher.data.range.fromDateTime).toLocaleString()} – {new Date(fetcher.data.range.toDateTime).toLocaleString()}
+                </s-text>
+                <s-text>Orders processed: {fetcher.data.processedOrders}</s-text>
+                {fetcher.data.range.processedOrderNameFrom && fetcher.data.range.processedOrderNameTo && (
+                  <s-text>
+                    Order range: {fetcher.data.range.processedOrderNameFrom} – {fetcher.data.range.processedOrderNameTo}
+                  </s-text>
+                )}
+                <s-text>Transactions created: {fetcher.data.transactionsCreated}</s-text>
+              </s-stack>
             </s-banner>
           )}
 
+          {/* Error banner */}
           {fetcher.data?.error && (
             <s-banner tone="critical">{fetcher.data.error}</s-banner>
           )}
 
-          {/* Per-product table with its own per-row date ranges */}
+          {/* Per‑product table */}
           <s-section padding="base">
             <s-stack gap="small">
-              <s-heading>Per-product ranges</s-heading>
+              <s-heading>Per‑product ranges</s-heading>
 
-              {/* Search/filter above the table (logic to be implemented later) */}
+              {/* Search filter (placeholder) */}
               <s-stack direction="inline" gap="small" alignItems="center">
                 <s-search-field
                   label="Search products"
-                  placeholder="Search by title or SKU"
-                  // Wire this up to real filtering when you implement the logic
-                  onInput={() => {
-                    // no-op for now
-                  }}
+                  placeholder="Search by title"
+                  onInput={() => {}}
                 />
               </s-stack>
 
@@ -274,9 +296,7 @@ export default function CheckInventory() {
                       <s-table-cell>
                         <s-button
                           variant="secondary"
-                          onClick={() => {
-                            // Row-level search / processing logic to be implemented later
-                          }}
+                          onClick={() => handleProductSearch(row.id, row.fromDate, row.fromTime, row.toDate, row.toTime)}
                         >
                           Search
                         </s-button>

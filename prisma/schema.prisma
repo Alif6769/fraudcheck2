@@ -51,11 +51,30 @@ model Order {
   shippingFee     String
   products        Json
   // new fields
+  productIds        Json?
   source          String? // e.g., "web", "pos", etc.
   fraudReport     String? // full text report from FraudSpy
   steadFastReport String?
   realName1       String?
   realName2       String?
+}
+
+model ProcessedOrderRange {
+  id                     Int      @id @default(autoincrement())
+  shop                   String   // which shop/session this belongs to
+
+  /// Earliest processed orderTime in this shop’s history
+  fromDateTime           DateTime
+  /// Latest processed orderTime in this shop’s history
+  toDateTime             DateTime
+
+  /// Optional stats for this particular run
+  processedOrdersCount   Int
+  processedOrderNameFrom String?
+  processedOrderNameTo   String?
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }
 
 model ShopSettings {
