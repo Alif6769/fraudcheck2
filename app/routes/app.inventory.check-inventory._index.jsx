@@ -95,6 +95,7 @@ export default function CheckInventory() {
     if (toDate) {
       formData.set("to", `${toDate}T${toTime || "23:59"}`);
     }
+    console.log("Submitting from:", `${fromDate}T${fromTime}`, "to:", `${toDate}T${toTime}`);
     fetcher.submit(formData, { method: "post" });
   };
 
