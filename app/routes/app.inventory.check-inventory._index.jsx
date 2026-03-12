@@ -1,45 +1,25 @@
+// app/routes/app.inventory.check-inventory.jsx
 import { useFetcher, useLoaderData } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { syncFulfilledOrdersForRange, processFulfilledOrdersWithRange } from "../services/inventory.server";
+import {
+  syncFulfilledOrdersForRange,
+  processFulfilledOrdersWithRange,
+} from "../services/inventory.server";
 
 // Loader to fetch products (raw or combo)
 export async function loader() {
   const products = await prisma.product.findMany({
     where: {
-      OR: [
-        { rawProductFlag: true },
-        { isCombo: true },
-        // Alternatively, filter by inventoryCategory:
-        // { inventoryCategory: { in: ["rawProducts", "comboProducts"] } }
-      ],
+      OR: [{ rawProductFlag: true }, { isCombo: true }],
     },
     orderBy: { productName: "asc" },
   });
   return { products };
 }
 
-// Helper: Convert local datetime string to UTC Date
-function localToUTC(localDateTimeString) {
-  // Create a Date object from the local string (browser interprets it as local time)
-  const localDate = new Date(localDateTimeString);
-  // Get the UTC timestamp directly
-  return new Date(localDate.toISOString());
-}
-
-// Helper: Format UTC date for display in local timezone
-function formatForDisplay(utcDate, timeZone = 'Asia/Dhaka') {
-  return utcDate.toLocaleString('en-US', { 
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-}
-
+// Helper: format the selected local range for display
 function formatLocalRange(fromDate, fromTime, toDate, toTime) {
   if (!fromDate || !toDate) return null;
 
@@ -60,6 +40,7 @@ function formatLocalRange(fromDate, fromTime, toDate, toTime) {
   };
 }
 
+// Action: sync + process orders for the given date range
 export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -67,20 +48,19 @@ export async function action({ request }) {
   const to = formData.get("to");
 
   if (!from || !to) {
+    // you can keep this as 400 or change to JSON as discussed earlier
     return new Response("Missing date range", { status: 400 });
   }
 
   const requestedFrom = new Date(from);
   const requestedTo = new Date(to);
-  // requestedTo.setHours(23, 59, 59, 999);
-  // const requestedFrom = localToUTC(from);
-  // const requestedTo = localToUTC(to);
 
-  // 1. Sync fulfillment data from Shopify for the requested range
   await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
-
-  // 2. Process transactions using the effective range logic (now with updated orders)
-  const result = await processFulfilledOrdersWithRange(requestedFrom, requestedTo, session.shop);
+  const result = await processFulfilledOrdersWithRange(
+    requestedFrom,
+    requestedTo,
+    session.shop
+  );
 
   return { success: true, ...result };
 }
@@ -89,16 +69,16 @@ export default function CheckInventory() {
   const { products } = useLoaderData();
   const fetcher = useFetcher();
 
-  // Top-level date range
+  // Global date range state
   const [fromDate, setFromDate] = useState("");
   const [fromTime, setFromTime] = useState("00:00");
   const [toDate, setToDate] = useState("");
   const [toTime, setToTime] = useState("23:59");
 
-  // NEW: client-side validation error for the global range
+  // Client-side validation error
   const [rangeError, setRangeError] = useState("");
 
-  // Per‑product rows – initialised from loader products
+  // Per‑product rows
   const [productRows, setProductRows] = useState(
     products.map((product) => ({
       id: product.id,
@@ -111,18 +91,24 @@ export default function CheckInventory() {
   );
 
   const isSubmitting = fetcher.state === "submitting";
-
-  // NEW: compute the human-readable selection
   const selection = formatLocalRange(fromDate, fromTime, toDate, toTime);
 
   const handleProcessAll = () => {
+    console.log("DEBUG handleProcessAll state:", {
+      fromDate,
+      fromTime,
+      toDate,
+      toTime,
+    });
+
     // Client-side validation
     if (!fromDate || !toDate) {
-      setRangeError("Please select both a From date and a To date before processing orders.");
+      setRangeError(
+        "Please select both a From date and a To date before processing orders."
+      );
       return;
     }
 
-    // Optional: ensure From <= To
     const from = new Date(`${fromDate}T${fromTime || "00:00"}`);
     const to = new Date(`${toDate}T${toTime || "23:59"}`);
     if (from > to) {
@@ -130,28 +116,28 @@ export default function CheckInventory() {
       return;
     }
 
-    // Clear any previous error
     setRangeError("");
 
     const formData = new FormData();
     formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     formData.set("to", `${toDate}T${toTime || "23:59"}`);
 
-    console.log(
-      "Submitting from:",
-      `${fromDate}T${fromTime}`,
-      "to:",
-      `${toDate}T${toTime}`
-    );
-
     fetcher.submit(formData, { method: "post" });
   };
 
-  const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
+  const handleProductSearch = (
+    productId,
+    fromDate,
+    fromTime,
+    toDate,
+    toTime
+  ) => {
     const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
     const toStr = toDate ? `${toDate}T${toTime || "23:59"}` : null;
     console.log(`Search product ${productId} from ${fromStr} to ${toStr}`);
-    alert(`Per‑product search not yet implemented. Selected range: ${fromStr} – ${toStr}`);
+    alert(
+      `Per‑product search not yet implemented. Selected range: ${fromStr} – ${toStr}`
+    );
   };
 
   const handleProductFieldChange = (id, field, value) => {
@@ -166,19 +152,16 @@ export default function CheckInventory() {
         <s-stack gap="base">
           {/* Informational banner */}
           <s-banner tone="info">
-            Select a date range and click "Process orders" to sync fulfillment data and create product transactions.
+            Select a date range and click "Process orders" to sync fulfillment
+            data and create product transactions.
           </s-banner>
 
           {/* Global date range controls */}
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
 
-            {/* NEW: error banner if client-side validation fails */}
-            {rangeError && (
-              <s-banner tone="critical">
-                {rangeError}
-              </s-banner>
-            )}
+            {/* Client-side error */}
+            {rangeError && <s-banner tone="critical">{rangeError}</s-banner>}
 
             <s-stack direction="inline" gap="small" alignItems="center">
               {/* From */}
@@ -188,17 +171,31 @@ export default function CheckInventory() {
                   <s-date-field
                     label="Date"
                     value={fromDate}
-                    onInput={(event) =>
-                      setFromDate(event.currentTarget.value || "")
-                    }
+                    onInput={(event) => {
+                      // Web component may send value via detail.value or target.value
+                      const value =
+                        event.detail?.value ??
+                        event.target?.value ??
+                        event.currentTarget?.value ??
+                        "";
+                      console.log("DEBUG fromDate onInput:", value);
+                      setFromDate(value);
+                      setRangeError("");
+                    }}
                   />
                   <s-text-field
                     label="Time (HH:MM)"
                     placeholder="00:00"
                     value={fromTime}
-                    onInput={(event) =>
-                      setFromTime(event.currentTarget.value || "")
-                    }
+                    onInput={(event) => {
+                      const value =
+                        event.target?.value ??
+                        event.currentTarget?.value ??
+                        "";
+                      console.log("DEBUG fromTime onInput:", value);
+                      setFromTime(value);
+                      setRangeError("");
+                    }}
                   />
                 </s-stack>
               </s-stack>
@@ -210,17 +207,30 @@ export default function CheckInventory() {
                   <s-date-field
                     label="Date"
                     value={toDate}
-                    onInput={(event) =>
-                      setToDate(event.currentTarget.value || "")
-                    }
+                    onInput={(event) => {
+                      const value =
+                        event.detail?.value ??
+                        event.target?.value ??
+                        event.currentTarget?.value ??
+                        "";
+                      console.log("DEBUG toDate onInput:", value);
+                      setToDate(value);
+                      setRangeError("");
+                    }}
                   />
                   <s-text-field
                     label="Time (HH:MM)"
                     placeholder="23:59"
                     value={toTime}
-                    onInput={(event) =>
-                      setToTime(event.currentTarget.value || "")
-                    }
+                    onInput={(event) => {
+                      const value =
+                        event.target?.value ??
+                        event.currentTarget?.value ??
+                        "";
+                      console.log("DEBUG toTime onInput:", value);
+                      setToTime(value);
+                      setRangeError("");
+                    }}
                   />
                 </s-stack>
               </s-stack>
@@ -237,7 +247,8 @@ export default function CheckInventory() {
             {/* Show current selection if both dates are chosen */}
             {selection && (
               <s-text tone="subdued">
-                Selected range: {selection.fromFormatted} – {selection.toFormatted}
+                Selected range: {selection.fromFormatted} –{" "}
+                {selection.toFormatted}
               </s-text>
             )}
           </s-stack>
@@ -249,23 +260,33 @@ export default function CheckInventory() {
                 <s-text>✅ Successfully processed orders!</s-text>
                 <s-text>
                   Date range:{" "}
-                  {new Date(fetcher.data.range.fromDateTime).toLocaleString()} –{" "}
-                  {new Date(fetcher.data.range.toDateTime).toLocaleString()}
+                  {new Date(
+                    fetcher.data.range.fromDateTime
+                  ).toLocaleString()}{" "}
+                  –{" "}
+                  {new Date(
+                    fetcher.data.range.toDateTime
+                  ).toLocaleString()}
                 </s-text>
-                <s-text>Orders processed: {fetcher.data.processedOrders}</s-text>
+                <s-text>
+                  Orders processed: {fetcher.data.processedOrders}
+                </s-text>
                 {fetcher.data.range.processedOrderNameFrom &&
                   fetcher.data.range.processedOrderNameTo && (
                     <s-text>
-                      Order range: {fetcher.data.range.processedOrderNameFrom} –{" "}
+                      Order range:{" "}
+                      {fetcher.data.range.processedOrderNameFrom} –{" "}
                       {fetcher.data.range.processedOrderNameTo}
                     </s-text>
                   )}
-                <s-text>Transactions created: {fetcher.data.transactionsCreated}</s-text>
+                <s-text>
+                  Transactions created: {fetcher.data.transactionsCreated}
+                </s-text>
               </s-stack>
             </s-banner>
           )}
 
-          {/* Error banner from server (if you ever return JSON with { error }) */}
+          {/* Error banner from server (only if you change action to return JSON errors) */}
           {fetcher.data?.error && (
             <s-banner tone="critical">{fetcher.data.error}</s-banner>
           )}
@@ -305,13 +326,14 @@ export default function CheckInventory() {
                         <s-date-field
                           label=""
                           value={row.fromDate}
-                          onInput={(event) =>
-                            handleProductFieldChange(
-                              row.id,
-                              "fromDate",
-                              event.currentTarget.value || ""
-                            )
-                          }
+                          onInput={(event) => {
+                            const value =
+                              event.detail?.value ??
+                              event.target?.value ??
+                              event.currentTarget?.value ??
+                              "";
+                            handleProductFieldChange(row.id, "fromDate", value);
+                          }}
                         />
                       </s-table-cell>
 
@@ -320,13 +342,13 @@ export default function CheckInventory() {
                           label=""
                           placeholder="00:00"
                           value={row.fromTime}
-                          onInput={(event) =>
-                            handleProductFieldChange(
-                              row.id,
-                              "fromTime",
-                              event.currentTarget.value || ""
-                            )
-                          }
+                          onInput={(event) => {
+                            const value =
+                              event.target?.value ??
+                              event.currentTarget?.value ??
+                              "";
+                            handleProductFieldChange(row.id, "fromTime", value);
+                          }}
                         />
                       </s-table-cell>
 
@@ -334,13 +356,14 @@ export default function CheckInventory() {
                         <s-date-field
                           label=""
                           value={row.toDate}
-                          onInput={(event) =>
-                            handleProductFieldChange(
-                              row.id,
-                              "toDate",
-                              event.currentTarget.value || ""
-                            )
-                          }
+                          onInput={(event) => {
+                            const value =
+                              event.detail?.value ??
+                              event.target?.value ??
+                              event.currentTarget?.value ??
+                              "";
+                            handleProductFieldChange(row.id, "toDate", value);
+                          }}
                         />
                       </s-table-cell>
 
@@ -349,13 +372,13 @@ export default function CheckInventory() {
                           label=""
                           placeholder="23:59"
                           value={row.toTime}
-                          onInput={(event) =>
-                            handleProductFieldChange(
-                              row.id,
-                              "toTime",
-                              event.currentTarget.value || ""
-                            )
-                          }
+                          onInput={(event) => {
+                            const value =
+                              event.target?.value ??
+                              event.currentTarget?.value ??
+                              "";
+                            handleProductFieldChange(row.id, "toTime", value);
+                          }}
                         />
                       </s-table-cell>
 
