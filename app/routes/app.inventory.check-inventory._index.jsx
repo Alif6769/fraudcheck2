@@ -50,11 +50,11 @@ export async function action({ request }) {
     return new Response("Missing date range", { status: 400 });
   }
 
-  // const requestedFrom = new Date(from);
-  // const requestedTo = new Date(to);
+  const requestedFrom = new Date(from);
+  const requestedTo = new Date(to);
   // requestedTo.setHours(23, 59, 59, 999);
-  const requestedFrom = localToUTC(from);
-  const requestedTo = localToUTC(to);
+  // const requestedFrom = localToUTC(from);
+  // const requestedTo = localToUTC(to);
 
   // 1. Sync fulfillment data from Shopify for the requested range
   await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
@@ -126,6 +126,7 @@ export default function CheckInventory() {
           {/* Global date range controls */}
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
+
             <s-stack direction="inline" gap="small" alignItems="center">
               {/* From */}
               <s-stack gap="small">
@@ -179,6 +180,12 @@ export default function CheckInventory() {
                 Process orders
               </s-button>
             </s-stack>
+            {/* Show current selection if both dates are chosen */}
+            {selection && (
+              <s-text tone="subdued">
+                Selected range: {selection.fromFormatted} – {selection.toFormatted}
+              </s-text>
+            )}
           </s-stack>
 
           {/* Success banner with detailed range info */}
