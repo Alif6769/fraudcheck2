@@ -147,6 +147,15 @@ export default function CheckInventory() {
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
 
+            {/* DEBUG: show raw state values */}
+            <s-banner tone="info">
+              <s-text type="strong">DEBUG current state:</s-text>
+              <s-text>fromDate: "{fromDate}"</s-text>
+              <s-text>fromTime: "{fromTime}"</s-text>
+              <s-text>toDate: "{toDate}"</s-text>
+              <s-text>toTime: "{toTime}"</s-text>
+            </s-banner>
+
             <s-stack direction="inline" gap="small" alignItems="center">
               {/* From */}
               <s-stack gap="small">
@@ -155,16 +164,18 @@ export default function CheckInventory() {
                   <s-date-field
                     label="Date"
                     value={fromDate}
-                    onInput={(event) => {
+                    // CHANGE: use onChange instead of onInput
+                    onChange={(event) => {
+                      console.log("DEBUG fromDate onChange event:", event);
+                      // Try the most likely places first
                       const value =
+                        // If it's a web component custom event
                         event.detail?.value ??
+                        // If React maps to a normal input event
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG fromDate onInput:", {
-                        rawEvent: event,
-                        extractedValue: value,
-                      });
+                      console.log("DEBUG fromDate extracted value:", value);
                       setFromDate(value);
                     }}
                   />
@@ -172,15 +183,13 @@ export default function CheckInventory() {
                     label="Time (HH:MM)"
                     placeholder="00:00"
                     value={fromTime}
-                    onInput={(event) => {
+                    onChange={(event) => {
+                      console.log("DEBUG fromTime onChange event:", event);
                       const value =
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG fromTime onInput:", {
-                        rawEvent: event,
-                        extractedValue: value,
-                      });
+                      console.log("DEBUG fromTime extracted value:", value);
                       setFromTime(value);
                     }}
                   />
@@ -194,16 +203,14 @@ export default function CheckInventory() {
                   <s-date-field
                     label="Date"
                     value={toDate}
-                    onInput={(event) => {
+                    onChange={(event) => {
+                      console.log("DEBUG toDate onChange event:", event);
                       const value =
                         event.detail?.value ??
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG toDate onInput:", {
-                        rawEvent: event,
-                        extractedValue: value,
-                      });
+                      console.log("DEBUG toDate extracted value:", value);
                       setToDate(value);
                     }}
                   />
@@ -211,15 +218,13 @@ export default function CheckInventory() {
                     label="Time (HH:MM)"
                     placeholder="23:59"
                     value={toTime}
-                    onInput={(event) => {
+                    onChange={(event) => {
+                      console.log("DEBUG toTime onChange event:", event);
                       const value =
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG toTime onInput:", {
-                        rawEvent: event,
-                        extractedValue: value,
-                      });
+                      console.log("DEBUG toTime extracted value:", value);
                       setToTime(value);
                     }}
                   />
