@@ -1,6 +1,6 @@
 import { useFetcher } from "react-router";
 import { useState } from "react";
-import { authenticate } from "../../../shopify.server";          // adjusted
+import { authenticate } from "../shopify.server";          // adjusted
 // import { processFulfilledOrders } from "../../../services/inventory.server"; // adjusted
 
 export async function action({ request }) {
