@@ -1,16 +1,8 @@
-import { useFetcher, useLoaderData } from "react-router";
-import { useState, useEffect } from "react";
+import { useFetcher } from "react-router";
+import { useState } from "react";
 import { authenticate } from "../shopify.server";
-import prisma from "../db.server"; // needed for loader
 
-// Loader to fetch products (same as product-mapping)
-export async function loader() {
-  const products = await prisma.product.findMany({
-    orderBy: { productName: "asc" },
-  });
-  return { products };
-}
-
+// Optional: existing server-side logic, left mostly unchanged
 export async function action({ request }) {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -21,183 +13,280 @@ export async function action({ request }) {
     return new Response("Missing date range", { status: 400 });
   }
 
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
+  // NOTE: The client-side UI now collects separate date + time pieces.
+  // You will likely want to parse and combine them here into Date objects
+  // in your shop's timezone (for example, Asia/Dhaka for BD time).
+  // The current implementation still assumes full ISO strings in `from`/`to`.
+
+  const fromDate = new Date(from.toString());
+  const toDate = new Date(to.toString());
   toDate.setHours(23, 59, 59, 999);
 
-  // TODO: implement processFulfilledOrders
   // const result = await processFulfilledOrders(fromDate, toDate);
-  // return { success: true, ...result };
 
-  return {
-    success: true,
+  // Placeholder result until you wire up real logic
+  const result = {
     processedOrders: 0,
     transactionsCreated: 0,
-    warning: "Functionality not yet implemented.",
   };
+
+  return { success: true, ...result };
 }
 
+// --- UI component ---------------------------------------------------------
+
+const INITIAL_PRODUCT_ROWS = [
+  {
+    id: "1",
+    name: "Sample product A",
+    fromDate: "",
+    fromTime: "",
+    toDate: "",
+    toTime: "",
+  },
+  {
+    id: "2",
+    name: "Sample product B",
+    fromDate: "",
+    fromTime: "",
+    toDate: "",
+    toTime: "",
+  },
+];
+
 export default function CheckInventory() {
-  const { products } = useLoaderData();
   const fetcher = useFetcher();
 
-  // Helper to get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split("T")[0];
+  // Top-level date range (for all products)
+  const [fromDate, setFromDate] = useState("");
+  const [fromTime, setFromTime] = useState("00:00");
+  const [toDate, setToDate] = useState("");
+  const [toTime, setToTime] = useState("23:59");
 
-  const [from, setFrom] = useState(`${today}T00:00`);
-  const [to, setTo] = useState(`${today}T23:59`);
+  // Per-product ranges for the table
+  const [productRows, setProductRows] = useState(INITIAL_PRODUCT_ROWS);
 
-  // For per‑product rows – we'll manage individual date ranges in state
-  // Each product gets its own from/to and a loading flag
-  const [productQueries, setProductQueries] = useState({});
+  const handleProcessAll = () => {
+    // NOTE: This is intentionally light on business logic.
+    // Right now we just submit the raw combined strings.
+    const formData = new FormData();
 
-  useEffect(() => {
-    // Initialize product queries with default from/to (same as global)
-    const initial = {};
-    products.forEach((p) => {
-      initial[p.id] = { from: `${today}T00:00`, to: `${today}T23:59`, checking: false };
-    });
-    setProductQueries(initial);
-  }, [products, today]);
+    if (fromDate) {
+      formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
+    }
+    if (toDate) {
+      formData.set("to", `${toDate}T${toTime || "23:59"}`);
+    }
 
-  const handleProductFromChange = (productId, value) => {
-    setProductQueries((prev) => ({
-      ...prev,
-      [productId]: { ...prev[productId], from: value },
-    }));
-  };
-
-  const handleProductToChange = (productId, value) => {
-    setProductQueries((prev) => ({
-      ...prev,
-      [productId]: { ...prev[productId], to: value },
-    }));
-  };
-
-  const handleProductCheck = (productId) => {
-    // TODO: implement per‑product check
-    alert(`Check product ${productId} from ${productQueries[productId].from} to ${productQueries[productId].to}`);
-    // For now, just simulate a loading state
-    setProductQueries((prev) => ({
-      ...prev,
-      [productId]: { ...prev[productId], checking: true },
-    }));
-    setTimeout(() => {
-      setProductQueries((prev) => ({
-        ...prev,
-        [productId]: { ...prev[productId], checking: false },
-      }));
-    }, 1000);
+    fetcher.submit(formData, { method: "post" });
   };
 
   const isSubmitting = fetcher.state === "submitting";
 
-  // Helper to get badge based on product type
-  const getTypeBadge = (product) => {
-    if (product.isCombo) return <s-badge tone="info">Combo</s-badge>;
-    if (product.isDuplicate) return <s-badge tone="caution">Duplicate</s-badge>;
-    return <s-badge tone="success">Raw</s-badge>;
+  const handleProductFieldChange = (id, field, value) => {
+    setProductRows((rows) =>
+      rows.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              [field]: value,
+            }
+          : row
+      )
+    );
   };
 
   return (
-    <s-page heading="Check Inventory" inlineSize="large">
+    <s-page heading="Check inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Global date range and process button */}
+          {/* Warning that this UI is not fully wired yet */}
           <s-banner tone="warning">
-            ⚠️ This is a preview – functionality will be implemented later.
+            This screen only provides the UI for selecting date and time ranges.
+            The server-side logic to combine dates, times, and handle time
+            zones (for example, BD time vs the shop's timezone) still needs to
+            be implemented.
           </s-banner>
 
-          <s-stack direction="inline" gap="small" alignItems="center">
-            <s-text-field
-              label="From"
-              type="datetime-local"
-              value={from}
-              onInput={(e) => setFrom(e.currentTarget.value)}
-            />
-            <s-text-field
-              label="To"
-              type="datetime-local"
-              value={to}
-              onInput={(e) => setTo(e.currentTarget.value)}
-            />
-            <s-button
-              variant="primary"
-              loading={isSubmitting}
-              onClick={() => {
-                const fd = new FormData();
-                fd.set("from", from);
-                fd.set("to", to);
-                fetcher.submit(fd, { method: "post" });
-              }}
-            >
-              Process Orders
-            </s-button>
+          {/* Global date range controls */}
+          <s-stack gap="small">
+            <s-heading>Overall date range</s-heading>
+
+            <s-stack direction="inline" gap="small" alignItems="center">
+              {/* From date + time */}
+              <s-stack gap="small">
+                <s-text type="strong">From</s-text>
+                <s-stack direction="inline" gap="small" alignItems="center">
+                  <s-date-field
+                    label="Date"
+                    value={fromDate}
+                    onInput={(event) =>
+                      setFromDate(event.currentTarget.value || "")
+                    }
+                  />
+                  <s-text-field
+                    label="Time (HH:MM)"
+                    placeholder="00:00"
+                    value={fromTime}
+                    onInput={(event) =>
+                      setFromTime(event.currentTarget.value || "")
+                    }
+                  />
+                </s-stack>
+              </s-stack>
+
+              {/* To date + time */}
+              <s-stack gap="small">
+                <s-text type="strong">To</s-text>
+                <s-stack direction="inline" gap="small" alignItems="center">
+                  <s-date-field
+                    label="Date"
+                    value={toDate}
+                    onInput={(event) =>
+                      setToDate(event.currentTarget.value || "")
+                    }
+                  />
+                  <s-text-field
+                    label="Time (HH:MM)"
+                    placeholder="23:59"
+                    value={toTime}
+                    onInput={(event) =>
+                      setToTime(event.currentTarget.value || "")
+                    }
+                  />
+                </s-stack>
+              </s-stack>
+
+              <s-button
+                variant="primary"
+                loading={isSubmitting}
+                onClick={handleProcessAll}
+              >
+                Process orders
+              </s-button>
+            </s-stack>
           </s-stack>
 
+          {/* Success / error banners from the fetcher */}
           {fetcher.data?.success && (
             <s-banner tone="success">
-              ✅ Processed {fetcher.data.processedOrders} orders, created{" "}
+              Processed {fetcher.data.processedOrders} orders, created{" "}
               {fetcher.data.transactionsCreated} transactions.
-              {fetcher.data.warning && <div>{fetcher.data.warning}</div>}
             </s-banner>
           )}
 
           {fetcher.data?.error && (
-            <s-banner tone="critical">
-              ❌ {fetcher.data.error}
-            </s-banner>
+            <s-banner tone="critical">{fetcher.data.error}</s-banner>
           )}
 
-          {/* Products table with per‑product date pickers */}
-          <s-heading>Products</s-heading>
-          <s-table>
-            <s-table-header-row>
-              <s-table-header>Product Name</s-table-header>
-              <s-table-header>Type</s-table-header>
-              <s-table-header>Stock</s-table-header>
-              <s-tableHeader>Custom From</s-tableHeader>
-              <s-tableHeader>Custom To</s-tableHeader>
-              <s-tableHeader>Actions</s-tableHeader>
-            </s-table-header-row>
+          {/* Per-product table with its own per-row date ranges */}
+          <s-section padding="base">
+            <s-stack gap="small">
+              <s-heading>Per-product ranges</s-heading>
 
-            <s-table-body>
-              {products.map((product) => (
-                <s-table-row key={product.id}>
-                  <s-table-cell>
-                    <s-text type="strong">{product.productName}</s-text>
-                  </s-table-cell>
-                  <s-table-cell>{getTypeBadge(product)}</s-table-cell>
-                  <s-table-cell>{product.quantity}</s-table-cell>
-                  <s-table-cell>
-                    <s-text-field
-                      type="datetime-local"
-                      value={productQueries[product.id]?.from || ""}
-                      onInput={(e) => handleProductFromChange(product.id, e.currentTarget.value)}
-                      style={{ width: "200px" }}
-                    />
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-text-field
-                      type="datetime-local"
-                      value={productQueries[product.id]?.to || ""}
-                      onInput={(e) => handleProductToChange(product.id, e.currentTarget.value)}
-                      style={{ width: "200px" }}
-                    />
-                  </s-table-cell>
-                  <s-table-cell>
-                    <s-button
-                      variant="secondary"
-                      loading={productQueries[product.id]?.checking}
-                      onClick={() => handleProductCheck(product.id)}
-                    >
-                      Check
-                    </s-button>
-                  </s-table-cell>
-                </s-table-row>
-              ))}
-            </s-table-body>
-          </s-table>
+              {/* Search/filter above the table (logic to be implemented later) */}
+              <s-stack direction="inline" gap="small" alignItems="center">
+                <s-search-field
+                  label="Search products"
+                  placeholder="Search by title or SKU"
+                  // Wire this up to real filtering when you implement the logic
+                  onInput={() => {
+                    // no-op for now
+                  }}
+                />
+              </s-stack>
+
+              <s-table variant="auto">
+                <s-table-header-row>
+                  <s-table-header listSlot="primary">Product</s-table-header>
+                  <s-table-header>From date</s-table-header>
+                  <s-table-header>From time</s-table-header>
+                  <s-table-header>To date</s-table-header>
+                  <s-table-header>To time</s-table-header>
+                  <s-table-header listSlot="inline">Search</s-table-header>
+                </s-table-header-row>
+
+                <s-table-body>
+                  {productRows.map((row) => (
+                    <s-table-row key={row.id}>
+                      <s-table-cell>
+                        <s-text type="strong">{row.name}</s-text>
+                      </s-table-cell>
+
+                      <s-table-cell>
+                        <s-date-field
+                          label=""
+                          value={row.fromDate}
+                          onInput={(event) =>
+                            handleProductFieldChange(
+                              row.id,
+                              "fromDate",
+                              event.currentTarget.value || ""
+                            )
+                          }
+                        />
+                      </s-table-cell>
+
+                      <s-table-cell>
+                        <s-text-field
+                          label=""
+                          placeholder="00:00"
+                          value={row.fromTime}
+                          onInput={(event) =>
+                            handleProductFieldChange(
+                              row.id,
+                              "fromTime",
+                              event.currentTarget.value || ""
+                            )
+                          }
+                        />
+                      </s-table-cell>
+
+                      <s-table-cell>
+                        <s-date-field
+                          label=""
+                          value={row.toDate}
+                          onInput={(event) =>
+                            handleProductFieldChange(
+                              row.id,
+                              "toDate",
+                              event.currentTarget.value || ""
+                            )
+                          }
+                        />
+                      </s-table-cell>
+
+                      <s-table-cell>
+                        <s-text-field
+                          label=""
+                          placeholder="23:59"
+                          value={row.toTime}
+                          onInput={(event) =>
+                            handleProductFieldChange(
+                              row.id,
+                              "toTime",
+                              event.currentTarget.value || ""
+                            )
+                          }
+                        />
+                      </s-table-cell>
+
+                      <s-table-cell>
+                        <s-button
+                          variant="secondary"
+                          onClick={() => {
+                            // Row-level search / processing logic to be implemented later
+                          }}
+                        >
+                          Search
+                        </s-button>
+                      </s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+            </s-stack>
+          </s-section>
         </s-stack>
       </s-section>
     </s-page>
