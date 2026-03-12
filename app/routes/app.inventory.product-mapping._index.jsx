@@ -1,8 +1,8 @@
 // routes/app.inventory.product-mapping._index.jsx
 import { useLoaderData, useFetcher } from "react-router";
 import { useState, useMemo } from "react";
-import prisma from "../../../db.server";
-import { authenticate, syncProducts } from "../../../shopify.server";
+import prisma from "../db.server";
+import { authenticate, syncProducts } from "../shopify.server";
 
 /* =========================
    LOADER – fetches all products

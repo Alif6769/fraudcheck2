@@ -1,7 +1,7 @@
 // app/routes/app.inventory.product-mapping.$id.jsx
 import { redirect } from "react-router";
-import prisma from "../../../db.server";
-import { authenticate } from "../../../shopify.server";
+import prisma from "../db.server";
+import { authenticate } from "../shopify.server";
 import { useLoaderData, useFetcher } from "react-router";
 import { useState, useEffect } from "react";
 
