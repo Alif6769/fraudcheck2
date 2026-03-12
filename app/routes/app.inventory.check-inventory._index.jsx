@@ -40,6 +40,26 @@ function formatForDisplay(utcDate, timeZone = 'Asia/Dhaka') {
   });
 }
 
+function formatLocalRange(fromDate, fromTime, toDate, toTime) {
+  if (!fromDate || !toDate) return null;
+
+  const from = new Date(`${fromDate}T${fromTime || "00:00"}`);
+  const to = new Date(`${toDate}T${toTime || "23:59"}`);
+
+  const options = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  };
+
+  return {
+    fromFormatted: from.toLocaleString(undefined, options),
+    toFormatted: to.toLocaleString(undefined, options),
+  };
+}
+
 export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -75,6 +95,9 @@ export default function CheckInventory() {
   const [toDate, setToDate] = useState("");
   const [toTime, setToTime] = useState("23:59");
 
+  // NEW: client-side validation error for the global range
+  const [rangeError, setRangeError] = useState("");
+
   // Per‑product rows – initialised from loader products
   const [productRows, setProductRows] = useState(
     products.map((product) => ({
@@ -87,19 +110,42 @@ export default function CheckInventory() {
     }))
   );
 
+  const isSubmitting = fetcher.state === "submitting";
+
+  // NEW: compute the human-readable selection
+  const selection = formatLocalRange(fromDate, fromTime, toDate, toTime);
+
   const handleProcessAll = () => {
+    // Client-side validation
+    if (!fromDate || !toDate) {
+      setRangeError("Please select both a From date and a To date before processing orders.");
+      return;
+    }
+
+    // Optional: ensure From <= To
+    const from = new Date(`${fromDate}T${fromTime || "00:00"}`);
+    const to = new Date(`${toDate}T${toTime || "23:59"}`);
+    if (from > to) {
+      setRangeError("The From date must be before or equal to the To date.");
+      return;
+    }
+
+    // Clear any previous error
+    setRangeError("");
+
     const formData = new FormData();
-    if (fromDate) {
-      formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
-    }
-    if (toDate) {
-      formData.set("to", `${toDate}T${toTime || "23:59"}`);
-    }
-    console.log("Submitting from:", `${fromDate}T${fromTime}`, "to:", `${toDate}T${toTime}`);
+    formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
+    formData.set("to", `${toDate}T${toTime || "23:59"}`);
+
+    console.log(
+      "Submitting from:",
+      `${fromDate}T${fromTime}`,
+      "to:",
+      `${toDate}T${toTime}`
+    );
+
     fetcher.submit(formData, { method: "post" });
   };
-
-  const isSubmitting = fetcher.state === "submitting";
 
   const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
     const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
@@ -126,6 +172,13 @@ export default function CheckInventory() {
           {/* Global date range controls */}
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
+
+            {/* NEW: error banner if client-side validation fails */}
+            {rangeError && (
+              <s-banner tone="critical">
+                {rangeError}
+              </s-banner>
+            )}
 
             <s-stack direction="inline" gap="small" alignItems="center">
               {/* From */}
@@ -180,6 +233,7 @@ export default function CheckInventory() {
                 Process orders
               </s-button>
             </s-stack>
+
             {/* Show current selection if both dates are chosen */}
             {selection && (
               <s-text tone="subdued">
@@ -194,20 +248,24 @@ export default function CheckInventory() {
               <s-stack gap="small">
                 <s-text>✅ Successfully processed orders!</s-text>
                 <s-text>
-                  Date range: {new Date(fetcher.data.range.fromDateTime).toLocaleString()} – {new Date(fetcher.data.range.toDateTime).toLocaleString()}
+                  Date range:{" "}
+                  {new Date(fetcher.data.range.fromDateTime).toLocaleString()} –{" "}
+                  {new Date(fetcher.data.range.toDateTime).toLocaleString()}
                 </s-text>
                 <s-text>Orders processed: {fetcher.data.processedOrders}</s-text>
-                {fetcher.data.range.processedOrderNameFrom && fetcher.data.range.processedOrderNameTo && (
-                  <s-text>
-                    Order range: {fetcher.data.range.processedOrderNameFrom} – {fetcher.data.range.processedOrderNameTo}
-                  </s-text>
-                )}
+                {fetcher.data.range.processedOrderNameFrom &&
+                  fetcher.data.range.processedOrderNameTo && (
+                    <s-text>
+                      Order range: {fetcher.data.range.processedOrderNameFrom} –{" "}
+                      {fetcher.data.range.processedOrderNameTo}
+                    </s-text>
+                  )}
                 <s-text>Transactions created: {fetcher.data.transactionsCreated}</s-text>
               </s-stack>
             </s-banner>
           )}
 
-          {/* Error banner */}
+          {/* Error banner from server (if you ever return JSON with { error }) */}
           {fetcher.data?.error && (
             <s-banner tone="critical">{fetcher.data.error}</s-banner>
           )}
@@ -304,7 +362,15 @@ export default function CheckInventory() {
                       <s-table-cell>
                         <s-button
                           variant="secondary"
-                          onClick={() => handleProductSearch(row.id, row.fromDate, row.fromTime, row.toDate, row.toTime)}
+                          onClick={() =>
+                            handleProductSearch(
+                              row.id,
+                              row.fromDate,
+                              row.fromTime,
+                              row.toDate,
+                              row.toTime
+                            )
+                          }
                         >
                           Search
                         </s-button>
