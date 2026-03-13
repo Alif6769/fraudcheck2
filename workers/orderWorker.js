@@ -68,6 +68,20 @@ console.log("🚀 Sheet worker started");
 const worker = new Worker(
   ORDER_QUEUE_NAME,
   async (job) => {
+    if (job.name === "process-fulfillment") {
+      // Handle fulfillment: create product transactions
+      const { orderName } = job.data;
+      console.log(`📦 Processing fulfillment for order ${orderName}`);
+      const order = await prisma.order.findUnique({ where: { orderName } });
+      if (!order) {
+        console.error(`❌ Order ${orderName} not found`);
+        return;
+      }
+      const transactionsCreated = await processOrderTransactions(order, prisma);
+      console.log(`✅ Created ${transactionsCreated} transactions for order ${orderName}`);
+      return;
+    }
+    
     const {
       orderName,
       shippingPhone,

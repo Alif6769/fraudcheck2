@@ -263,6 +263,144 @@ export async function syncFulfilledOrdersForRange(session, admin, fromDate, toDa
 }
 
 /**
+ * Process a single order's line items and create product transactions.
+ * @param {Object} order - The order object from the database (must contain productIds or products, fulfilledAt, etc.)
+ * @param {Prisma.TransactionClient} tx - Prisma transaction client
+ * @returns {Promise<number>} Number of transactions created
+ */
+export async function processOrderTransactions(order, tx) {
+  let transactionsCreated = 0;
+
+  // Prefer productIds if available; fallback to products JSON
+  let lineItems = [];
+
+  if (order.productIds) {
+    try {
+      const parsed = Array.isArray(order.productIds)
+        ? order.productIds
+        : JSON.parse(order.productIds);
+
+      if (Array.isArray(parsed)) {
+        lineItems = parsed.map((p) => ({
+          productId: p.productId,
+          quantity: p.quantity,
+          title: p.title || null,
+        }));
+      }
+    } catch {
+      lineItems = [];
+    }
+  }
+
+  if (!lineItems.length && order.products) {
+    const parsedProducts = Array.isArray(order.products)
+      ? order.products
+      : JSON.parse(order.products);
+
+    if (Array.isArray(parsedProducts)) {
+      lineItems = parsedProducts.map((p) => ({
+        productId: null,
+        quantity: p.quantity,
+        title: p.title,
+      }));
+    }
+  }
+
+  if (!Array.isArray(lineItems) || !lineItems.length) return 0;
+
+  const timestamp = order.fulfilledAt || order.orderTime || new Date();
+
+  for (const item of lineItems) {
+    const { title, quantity, productId } = item;
+
+    let product = null;
+
+    if (productId) {
+      product = await tx.product.findUnique({
+        where: { productId: productId },
+      });
+    }
+
+    if (!product && title) {
+      product = await tx.product.findFirst({
+        where: { productName: { equals: title, mode: "insensitive" } },
+      });
+    }
+
+    if (!product) {
+      console.warn(
+        `⚠️ Product not found for item: productId="${productId}", title="${title}" – skipping`
+      );
+      continue;
+    }
+
+    if (product.rawProductFlag) {
+      await tx.productTransaction.create({
+        data: {
+          productId: product.productId,
+          type: "SALE",
+          quantity: quantity,
+          timestamp,
+        },
+      });
+      transactionsCreated++;
+    } else if (product.isDuplicate && product.rootProductId) {
+      await tx.productTransaction.create({
+        data: {
+          productId: product.rootProductId,
+          type: "SALE",
+          quantity: quantity,
+          timestamp,
+        },
+      });
+      transactionsCreated++;
+    } else if (product.isCombo && product.comboReference) {
+      await tx.productTransaction.create({
+        data: {
+          productId: product.productId,
+          type: "SALE",
+          quantity: quantity,
+          timestamp,
+        },
+      });
+      transactionsCreated++;
+
+      let components = [];
+      try {
+        components = JSON.parse(product.comboReference);
+      } catch {
+        components = [];
+      }
+
+      for (const comp of components) {
+        const rawProduct = await tx.product.findUnique({
+          where: { productId: comp.productId },
+        });
+        if (!rawProduct) {
+          console.warn(`⚠️ Raw product not found for component: ${comp.productId}`);
+          continue;
+        }
+
+        const rawQuantity = comp.quantity * quantity;
+        await tx.productTransaction.create({
+          data: {
+            productId: rawProduct.productId,
+            type: "SALE",
+            quantity: rawQuantity,
+            timestamp,
+          },
+        });
+        transactionsCreated++;
+      }
+    } else {
+      console.warn(`⚠️ Product "${product.productName}" has no type flags – skipping`);
+    }
+  }
+
+  return transactionsCreated;
+}
+
+/**
  * Process fulfilled orders within a date range for a specific shop.
  *
  * Steps:
@@ -341,145 +479,8 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
     let transactionsCreated = 0;
 
     for (const order of orders) {
-      // Prefer productIds if available; fallback to products JSON
-      let lineItems = [];
-
-      if (order.productIds) {
-        try {
-          const parsed = Array.isArray(order.productIds)
-            ? order.productIds
-            : JSON.parse(order.productIds);
-
-          if (Array.isArray(parsed)) {
-            lineItems = parsed.map((p) => ({
-              productId: p.productId,
-              quantity: p.quantity,
-              title: p.title || null,
-            }));
-          }
-        } catch {
-          // If JSON parse fails, fallback to products
-          lineItems = [];
-        }
-      }
-
-      if (!lineItems.length && order.products) {
-        // Existing behavior: products JSON is array of { title, quantity }
-        const parsedProducts = Array.isArray(order.products)
-          ? order.products
-          : JSON.parse(order.products);
-
-        if (Array.isArray(parsedProducts)) {
-          lineItems = parsedProducts.map((p) => ({
-            productId: null,
-            quantity: p.quantity,
-            title: p.title,
-          }));
-        }
-      }
-
-      if (!Array.isArray(lineItems) || !lineItems.length) continue;
-
-      for (const item of lineItems) {
-        const { title, quantity, productId } = item;
-
-        let product = null;
-
-        if (productId) {
-          // Direct lookup by productId
-          product = await tx.product.findUnique({
-            where: { productId: productId },
-          });
-        }
-
-        if (!product && title) {
-          // Fallback: find product by name (case-insensitive)
-          product = await tx.product.findFirst({
-            where: { productName: { equals: title, mode: "insensitive" } },
-          });
-        }
-
-        if (!product) {
-          console.warn(
-            `⚠️ Product not found for item: productId="${productId}", title="${title}" – skipping`
-          );
-          continue;
-        }
-
-        const timestamp = order.fulfilledAt || order.orderTime || new Date();
-
-        // Determine product type and create appropriate transactions
-        if (product.rawProductFlag) {
-          // Raw product: create a SALE transaction
-          await tx.productTransaction.create({
-            data: {
-              productId: product.productId,
-              type: "SALE",
-              quantity: quantity,
-              timestamp,
-            },
-          });
-          transactionsCreated++;
-        } else if (product.isDuplicate && product.rootProductId) {
-          // Duplicate: transaction goes to root product
-          await tx.productTransaction.create({
-            data: {
-              productId: product.rootProductId,
-              type: "SALE",
-              quantity: quantity,
-              timestamp,
-            },
-          });
-          transactionsCreated++;
-        } else if (product.isCombo && product.comboReference) {
-          // Combo: create transaction for the combo itself
-          await tx.productTransaction.create({
-            data: {
-              productId: product.productId,
-              type: "SALE",
-              quantity: quantity,
-              timestamp,
-            },
-          });
-          transactionsCreated++;
-
-          // Parse combo components
-          let components = [];
-          try {
-            components = JSON.parse(product.comboReference);
-          } catch {
-            components = [];
-          }
-
-          for (const comp of components) {
-            const rawProduct = await tx.product.findUnique({
-              where: { productId: comp.productId },
-            });
-            if (!rawProduct) {
-              console.warn(
-                `⚠️ Raw product not found for component: ${comp.productId}`
-              );
-              continue;
-            }
-
-            const rawQuantity = comp.quantity * quantity;
-            await tx.productTransaction.create({
-              data: {
-                productId: rawProduct.productId,
-                type: "SALE",
-                quantity: rawQuantity,
-                timestamp,
-              },
-            });
-            transactionsCreated++;
-          }
-        } else {
-          // Unknown type – log and skip
-          console.warn(
-            `⚠️ Product "${product.productName}" has no type flags – skipping`
-          );
-        }
-      }
+      const created = await processOrderTransactions(order, tx);
+      transactionsCreated += created;
     }
 
     const processedOrders = orders.length;
