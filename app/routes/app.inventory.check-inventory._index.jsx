@@ -1,41 +1,46 @@
-import { useLoaderData, useFetcher, useNavigate } from "react-router";
-import { useState, useEffect } from "react";
+import { useLoaderData, useFetcher } from "react-router";
+import { useState } from "react";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 
-// Helper: Convert a local date string (YYYY-MM-DD) + time + offset to UTC Date
-function parseLocalToUTC(dateStr, timeStr, offsetMinutes) {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hour, minute] = timeStr.split(':').map(Number);
-  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
-  return utcDate;
+// Helper to get UTC Date objects for local start/end of yesterday
+// Returns:
+//   startUTC – start of yesterday in UTC (for queries)
+//   endUTC   – end of yesterday in UTC
+//   yesterdayLocalDate – Date object representing the start of yesterday (local)
+//   todayLocalDate     – Date object representing now (local)
+function getYesterdayRangeWithLabels() {
+  const now = new Date(); // server local time
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+
+  const startLocal = new Date(year, month, day - 1, 0, 0, 0, 0);
+  const endLocal = new Date(year, month, day - 1, 23, 59, 59, 999);
+
+  // Convert local to UTC by subtracting timezone offset
+  const startUTC = new Date(startLocal.getTime());
+  const endUTC = new Date(endLocal.getTime());
+
+  return {
+    startUTC,
+    endUTC,
+    yesterdayLocalDate: startLocal, // same calendar day as endLocal
+    todayLocalDate: now,
+  };
 }
 
 export async function loader({ request }) {
   await authenticate.admin(request);
 
-  const url = new URL(request.url);
-  const tzOffset = parseInt(url.searchParams.get("tzOffset") || "0");
+  const {
+    startUTC,
+    endUTC,
+    yesterdayLocalDate,
+    todayLocalDate,
+  } = getYesterdayRangeWithLabels();
 
-  // Compute local yesterday start/end using the client's offset
-  const now = new Date(); // server current time (but we'll use offset to get client's local date)
-  // Get client's current local date by adjusting server time with offset
-  const clientNow = new Date(now.getTime() + tzOffset * 60000);
-  const year = clientNow.getUTCFullYear();
-  const month = clientNow.getUTCMonth();
-  const day = clientNow.getUTCDate();
-
-  // Local start of yesterday (client's timezone)
-  const yesterdayDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
-  const startUTC = parseLocalToUTC(yesterdayDateStr, "00:00", tzOffset);
-  const endUTC = parseLocalToUTC(yesterdayDateStr, "23:59", tzOffset);
-
-  // For display, we also need the client's yesterday date and today date
-  const todayISO = clientNow.toISOString();
-  const yesterdayISO = new Date(clientNow.getTime() - 86400000).toISOString();
-
-  // Fetch products
+  // Fetch all products (raw or combo)
   const products = await prisma.product.findMany({
     where: {
       OR: [{ rawProductFlag: true }, { isCombo: true }],
@@ -43,7 +48,7 @@ export async function loader({ request }) {
     orderBy: { productName: "asc" },
   });
 
-  // Fetch transactions in UTC range
+  // Fetch all transactions from yesterday (UTC range)
   const transactions = await prisma.productTransaction.findMany({
     where: {
       timestamp: {
@@ -53,15 +58,21 @@ export async function loader({ request }) {
     },
   });
 
-  // Aggregate totals per product
+  // Build map of productId -> transaction sums
   const totalsMap = {};
   for (const txn of transactions) {
     if (!totalsMap[txn.productId]) {
-      totalsMap[txn.productId] = { SALE: 0, MANUAL_SALE: 0, RETURN: 0, DAMAGE: 0 };
+      totalsMap[txn.productId] = {
+        SALE: 0,
+        MANUAL_SALE: 0,
+        RETURN: 0,
+        DAMAGE: 0,
+      };
     }
     totalsMap[txn.productId][txn.type] += txn.quantity;
   }
 
+  // Attach fulfilled sums to each product; unfulfilled remains 0 for now
   const productsWithTotals = products.map((product) => ({
     ...product,
     fulfilled: {
@@ -70,58 +81,63 @@ export async function loader({ request }) {
       return: totalsMap[product.productId]?.RETURN || 0,
       damage: totalsMap[product.productId]?.DAMAGE || 0,
     },
-    unfulfilled: { sells: 0, manualSells: 0, return: 0, damage: 0 },
+    unfulfilled: {
+      sells: 0,
+      manualSells: 0,
+      return: 0,
+      damage: 0,
+    },
   }));
 
   return {
     products: productsWithTotals,
-    todayISO,
-    yesterdayISO,
+    yesterdayLocalDate: yesterdayLocalDate.toISOString(),
+    todayLocalDate: todayLocalDate.toISOString(),
   };
 }
 
 export default function TodaysInventory() {
-  const { products, todayISO, yesterdayISO } = useLoaderData();
+  const { products, todayLocalDate, yesterdayLocalDate } = useLoaderData();
   const fetcher = useFetcher();
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
 
-  // If no tzOffset in URL, redirect with current offset
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has("tzOffset")) {
-      const offset = new Date().getTimezoneOffset();
-      url.searchParams.set("tzOffset", offset);
-      navigate(url.pathname + url.search, { replace: true });
-    }
-  }, [navigate]);
-
-  const today = new Date(todayISO);
-  const yesterday = new Date(yesterdayISO);
+  const today = new Date(todayLocalDate);
+  const yesterday = new Date(yesterdayLocalDate);
 
   const formattedToday = today.toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
+
   const formattedYesterday = yesterday.toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 
-  const handleSync = () => alert("Sync not implemented yet.");
+  const handleSync = () => {
+    alert("Sync not implemented yet.");
+  };
 
+  // Filter products by search term
   const filteredProducts = products.filter((p) =>
     p.productName.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Calculate overall totals across filtered products
   const totals = filteredProducts.reduce(
-    (acc, p) => {
-      acc.fulfilled.sells += p.fulfilled.sells;
-      acc.fulfilled.manualSells += p.fulfilled.manualSells;
-      acc.fulfilled.return += p.fulfilled.return;
-      acc.fulfilled.damage += p.fulfilled.damage;
-      acc.unfulfilled.sells += p.unfulfilled.sells;
-      acc.unfulfilled.manualSells += p.unfulfilled.manualSells;
-      acc.unfulfilled.return += p.unfulfilled.return;
-      acc.unfulfilled.damage += p.unfulfilled.damage;
+    (acc, product) => {
+      acc.fulfilled.sells += product.fulfilled.sells;
+      acc.fulfilled.manualSells += product.fulfilled.manualSells;
+      acc.fulfilled.return += product.fulfilled.return;
+      acc.fulfilled.damage += product.fulfilled.damage;
+
+      acc.unfulfilled.sells += product.unfulfilled.sells;
+      acc.unfulfilled.manualSells += product.unfulfilled.manualSells;
+      acc.unfulfilled.return += product.unfulfilled.return;
+      acc.unfulfilled.damage += product.unfulfilled.damage;
+
       return acc;
     },
     {
@@ -159,7 +175,7 @@ export default function TodaysInventory() {
 
           {/* Table with two‑header row */}
           <s-table variant="auto">
-            {/* First header row */}
+            {/* First header row: main columns with colspan */}
             <s-table-header-row>
               <s-table-header listSlot="primary" rowspan="2">
                 Product
@@ -175,12 +191,15 @@ export default function TodaysInventory() {
               </s-table-header>
             </s-table-header-row>
 
-            {/* Second header row (exactly 8 cells) */}
+            {/* Second header row: subcolumns */}
             <s-table-header-row>
+              {/* These two cells are omitted because they are covered by rowspan */}
+              {/* Fulfilled subcolumns */}
               <s-table-header>Sells</s-table-header>
               <s-table-header>Manual sells</s-table-header>
               <s-table-header>Return</s-table-header>
               <s-table-header>Damage</s-table-header>
+              {/* Unfulfilled subcolumns */}
               <s-table-header>Sells</s-table-header>
               <s-table-header>Manual sells</s-table-header>
               <s-table-header>Return</s-table-header>
@@ -197,12 +216,14 @@ export default function TodaysInventory() {
                   <s-table-cell>
                     {product.isCombo ? "Combo" : "Raw"}
                   </s-table-cell>
-                  {/* Fulfilled */}
+
+                  {/* Fulfilled columns */}
                   <s-table-cell>{product.fulfilled.sells}</s-table-cell>
                   <s-table-cell>{product.fulfilled.manualSells}</s-table-cell>
                   <s-table-cell>{product.fulfilled.return}</s-table-cell>
                   <s-table-cell>{product.fulfilled.damage}</s-table-cell>
-                  {/* Unfulfilled */}
+
+                  {/* Unfulfilled columns */}
                   <s-table-cell>{product.unfulfilled.sells}</s-table-cell>
                   <s-table-cell>{product.unfulfilled.manualSells}</s-table-cell>
                   <s-table-cell>{product.unfulfilled.return}</s-table-cell>
@@ -210,22 +231,40 @@ export default function TodaysInventory() {
                 </s-table-row>
               ))}
 
-              {/* Totals row */}
+              {/* Grand totals row */}
               <s-table-row>
                 <s-table-cell>
                   <s-text weight="bold">Total</s-text>
                 </s-table-cell>
-                <s-table-cell /> {/* empty Type */}
+                <s-table-cell /> {/* empty Type cell */}
+
                 {/* Fulfilled totals */}
-                <s-table-cell><s-text weight="bold">{totals.fulfilled.sells}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.fulfilled.manualSells}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.fulfilled.return}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.fulfilled.damage}</s-text></s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.sells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.manualSells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.return}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.damage}</s-text>
+                </s-table-cell>
+
                 {/* Unfulfilled totals */}
-                <s-table-cell><s-text weight="bold">{totals.unfulfilled.sells}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.unfulfilled.manualSells}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.unfulfilled.return}</s-text></s-table-cell>
-                <s-table-cell><s-text weight="bold">{totals.unfulfilled.damage}</s-text></s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.sells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.manualSells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.return}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.damage}</s-text>
+                </s-table-cell>
               </s-table-row>
             </s-table-body>
           </s-table>
