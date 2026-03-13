@@ -108,6 +108,7 @@ export async function action({ request }) {
 export default function CheckInventory() {
   const { products } = useLoaderData();
   const fetcher = useFetcher();
+  const productFetcher = useFetcher();
 
   // Global date range state
   const [fromDate, setFromDate] = useState("");
