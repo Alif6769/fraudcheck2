@@ -9,38 +9,53 @@ import { authenticate } from "../shopify.server";
 //   endUTC   – end of yesterday in UTC
 //   yesterdayLocalDate – Date object representing the start of yesterday (local)
 //   todayLocalDate     – Date object representing now (local)
-function getYesterdayRangeWithLabels() {
-  const now = new Date(); // server local time
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const day = now.getDate();
+// Helper to get UTC Date objects for local start/end of yesterday using client's timezone offset
+function getYesterdayRangeWithOffset(tzOffset) {
+  // tzOffset is minutes from UTC (e.g., -360 for UTC+6)
+  const now = new Date(); // server UTC
 
-  const startLocal = new Date(year, month, day - 1, 0, 0, 0, 0);
-  const endLocal = new Date(year, month, day - 1, 23, 59, 59, 999);
+  // Convert server UTC to client local time by adding offset minutes
+  const clientNow = new Date(now.getTime() + tzOffset * 60000);
 
-  // Convert local to UTC by subtracting timezone offset
-  const startUTC = new Date(startLocal.getTime() - startLocal.getTimezoneOffset() * 60000);
-  const endUTC = new Date(endLocal.getTime() - endLocal.getTimezoneOffset() * 60000);
+  const year = clientNow.getFullYear();
+  const month = clientNow.getMonth();
+  const day = clientNow.getDate();
+
+  // Local start and end of yesterday in client's time
+  const startLocal = new Date(Date.UTC(year, month, day - 1, 0, 0, 0, 0));
+  const endLocal = new Date(Date.UTC(year, month, day - 1, 23, 59, 59, 999));
+
+  // Convert back to UTC by subtracting offset
+  const startUTC = new Date(startLocal.getTime() - tzOffset * 60000);
+  const endUTC = new Date(endLocal.getTime() - tzOffset * 60000);
 
   return {
     startUTC,
     endUTC,
-    yesterdayLocalDate: startLocal, // same calendar day as endLocal
-    todayLocalDate: now,
+    yesterdayLocalDate: new Date(year, month, day - 1, 0, 0, 0, 0), // local date object for display
+    todayLocalDate: new Date(year, month, day, 0, 0, 0, 0), // local today midnight
   };
 }
 
 export async function loader({ request }) {
   await authenticate.admin(request);
 
+  const url = new URL(request.url);
+  const tzOffsetParam = url.searchParams.get("tzOffset");
+  if (!tzOffsetParam) {
+    // If no offset, we still need to return something, but component will redirect
+    return { products: [], needsOffset: true };
+  }
+  const tzOffset = parseInt(tzOffsetParam, 10);
+
   const {
     startUTC,
     endUTC,
     yesterdayLocalDate,
     todayLocalDate,
-  } = getYesterdayRangeWithLabels();
+  } = getYesterdayRangeWithOffset(tzOffset);
 
-  // Fetch all products (raw or combo)
+  // Fetch products (raw or combo)
   const products = await prisma.product.findMany({
     where: {
       OR: [{ rawProductFlag: true }, { isCombo: true }],
@@ -48,7 +63,7 @@ export async function loader({ request }) {
     orderBy: { productName: "asc" },
   });
 
-  // Fetch all transactions from yesterday (UTC range)
+  // Fetch transactions in UTC range
   const transactions = await prisma.productTransaction.findMany({
     where: {
       timestamp: {
@@ -58,7 +73,7 @@ export async function loader({ request }) {
     },
   });
 
-  // Build map of productId -> transaction sums
+  // Build totals map
   const totalsMap = {};
   for (const txn of transactions) {
     if (!totalsMap[txn.productId]) {
@@ -72,7 +87,6 @@ export async function loader({ request }) {
     totalsMap[txn.productId][txn.type] += txn.quantity;
   }
 
-  // Attach fulfilled sums to each product; unfulfilled remains 0 for now
   const productsWithTotals = products.map((product) => ({
     ...product,
     fulfilled: {
