@@ -55,6 +55,16 @@ export async function action({ request }) {
       return new Response("Missing productId", { status: 400 });
     }
 
+    // Get product name from database
+    const product = await prisma.product.findUnique({
+      where: { productId },
+      select: { productName: true },
+    });
+
+    if (!product) {
+      return new Response("Product not found", { status: 404 });
+    }
+
     // Query transactions for this product in the date range
     const transactions = await prisma.productTransaction.groupBy({
       by: ['type'],
@@ -84,6 +94,7 @@ export async function action({ request }) {
     return {
       success: true,
       productId,
+      productName: product.productName,
       totals,
       from,
       to,
@@ -119,7 +130,7 @@ export default function CheckInventory() {
   // Per‑product rows
   const [productRows, setProductRows] = useState(
     products.map((product) => ({
-      id: product.id,
+      productId: product.productId,   // ✅ use Shopify product ID
       name: product.productName,
       fromDate: "",
       fromTime: "",
@@ -163,16 +174,18 @@ export default function CheckInventory() {
     }
     const formData = new FormData();
     formData.set("intent", "product-search");
-    formData.set("productId", productId);
+    formData.set("productId", productId); // ✅ now uses the correct ID
     formData.set("from", fromStr);
     formData.set("to", toStr);
     formData.set("tzOffset", new Date().getTimezoneOffset());
     productFetcher.submit(formData, { method: "post" });
   };
 
-  const handleProductFieldChange = (id, field, value) => {
+  const handleProductFieldChange = (productId, field, value) => {
     setProductRows((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+      rows.map((row) =>
+        row.productId === productId ? { ...row, [field]: value } : row
+      )
     );
   };
 
@@ -331,7 +344,7 @@ export default function CheckInventory() {
             <s-banner tone="info">
               <s-stack gap="small">
                 <s-text>📊 Product transaction summary</s-text>
-                <s-text>Product ID: {productFetcher.data.productId}</s-text>
+                <s-text>Product: {productFetcher.data.productName}</s-text>
                 <s-text>From {productFetcher.data.from} to {productFetcher.data.to}</s-text>
                 <s-text>Sales: {productFetcher.data.totals.SALE}</s-text>
                 <s-text>Returns: {productFetcher.data.totals.RETURN}</s-text>
@@ -366,7 +379,7 @@ export default function CheckInventory() {
 
                 <s-table-body>
                   {productRows.map((row) => (
-                    <s-table-row key={row.id}>
+                    <s-table-row key={row.productId}>
                       <s-table-cell>
                         <s-text type="strong">{row.name}</s-text>
                       </s-table-cell>
@@ -382,11 +395,11 @@ export default function CheckInventory() {
                               event.currentTarget?.value ??
                               "";
                             console.log("DEBUG row.fromDate onInput:", {
-                              productId: row.id,
+                              productId: row.productId,
                               rawEvent: event,
                               extractedValue: value,
                             });
-                            handleProductFieldChange(row.id, "fromDate", value);
+                            handleProductFieldChange(row.productId, "fromDate", value);
                           }}
                         />
                       </s-table-cell>
@@ -402,11 +415,11 @@ export default function CheckInventory() {
                               event.currentTarget?.value ??
                               "";
                             console.log("DEBUG row.fromTime onInput:", {
-                              productId: row.id,
+                              productId: row.productId,
                               rawEvent: event,
                               extractedValue: value,
                             });
-                            handleProductFieldChange(row.id, "fromTime", value);
+                            handleProductFieldChange(row.productId, "fromTime", value);
                           }}
                         />
                       </s-table-cell>
@@ -422,11 +435,11 @@ export default function CheckInventory() {
                               event.currentTarget?.value ??
                               "";
                             console.log("DEBUG row.toDate onInput:", {
-                              productId: row.id,
+                              productId: row.productId,
                               rawEvent: event,
                               extractedValue: value,
                             });
-                            handleProductFieldChange(row.id, "toDate", value);
+                            handleProductFieldChange(row.productId, "toDate", value);
                           }}
                         />
                       </s-table-cell>
@@ -442,11 +455,11 @@ export default function CheckInventory() {
                               event.currentTarget?.value ??
                               "";
                             console.log("DEBUG row.toTime onInput:", {
-                              productId: row.id,
+                              productId: row.productId,
                               rawEvent: event,
                               extractedValue: value,
                             });
-                            handleProductFieldChange(row.id, "toTime", value);
+                            handleProductFieldChange(row.productId, "toTime", value);
                           }}
                         />
                       </s-table-cell>
@@ -456,7 +469,7 @@ export default function CheckInventory() {
                           variant="secondary"
                           onClick={() =>
                             handleProductSearch(
-                              row.id,
+                              row.productId,
                               row.fromDate,
                               row.fromTime,
                               row.toDate,
