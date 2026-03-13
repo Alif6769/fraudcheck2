@@ -3,27 +3,36 @@ import { useState } from "react";
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 
-// Helper to get yesterday's date range in UTC
-function getYesterdayRange() {
+// Helper to get UTC Date objects for local start and end of yesterday
+function getYesterdayUTC() {
   const now = new Date();
+
+  // Get current year, month, day in user's local time
   const year = now.getFullYear();
   const month = now.getMonth();
   const day = now.getDate();
 
-  // Start of yesterday (local midnight) – we'll convert to UTC for query
+  // Local start of yesterday (00:00:00.000)
   const startLocal = new Date(year, month, day - 1, 0, 0, 0, 0);
+  // Local end of yesterday (23:59:59.999)
   const endLocal = new Date(year, month, day - 1, 23, 59, 59, 999);
 
-  // Convert to UTC timestamps (ISO strings)
-  const startUTC = new Date(startLocal.toISOString());
-  const endUTC = new Date(endLocal.toISOString());
-  return { startUTC, endUTC };
+  // Convert to UTC timestamps by subtracting timezone offset
+  const startUTC = new Date(startLocal.getTime() - startLocal.getTimezoneOffset() * 60000);
+  const endUTC = new Date(endLocal.getTime() - endLocal.getTimezoneOffset() * 60000);
+
+  return { startUTC, endUTC, today: now };
 }
 
 export async function loader({ request }) {
   await authenticate.admin(request);
 
-  const { startUTC, endUTC } = getYesterdayRange();
+  const { startUTC, endUTC, today } = getYesterdayUTC();
+  const todayDateString = today.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
 
   // Fetch all products (raw or combo)
   const products = await prisma.product.findMany({
@@ -33,7 +42,7 @@ export async function loader({ request }) {
     orderBy: { productName: "asc" },
   });
 
-  // Fetch all transactions from yesterday
+  // Fetch all transactions from yesterday (UTC)
   const transactions = await prisma.productTransaction.findMany({
     where: {
       timestamp: {
@@ -66,7 +75,6 @@ export async function loader({ request }) {
       return: totals[product.productId]?.RETURN || 0,
       damage: totals[product.productId]?.DAMAGE || 0,
     },
-    // Unfulfilled data pending – set to zero for now
     unfulfilled: {
       sells: 0,
       manualSells: 0,
@@ -75,11 +83,30 @@ export async function loader({ request }) {
     },
   }));
 
-  return { products: productsWithTotals };
+  // Compute overall totals across all products
+  const overallTotals = {
+    fulfilled: productsWithTotals.reduce(
+      (acc, p) => {
+        acc.sells += p.fulfilled.sells;
+        acc.manualSells += p.fulfilled.manualSells;
+        acc.return += p.fulfilled.return;
+        acc.damage += p.fulfilled.damage;
+        return acc;
+      },
+      { sells: 0, manualSells: 0, return: 0, damage: 0 }
+    ),
+    unfulfilled: { sells: 0, manualSells: 0, return: 0, damage: 0 }, // unchanged
+  };
+
+  return {
+    products: productsWithTotals,
+    totals: overallTotals,
+    todayDateString,
+  };
 }
 
 export default function TodaysInventory() {
-  const { products } = useLoaderData();
+  const { products, totals, todayDateString } = useLoaderData();
   const fetcher = useFetcher();
   const [search, setSearch] = useState("");
 
@@ -95,8 +122,8 @@ export default function TodaysInventory() {
     <s-page heading="Today's Inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Top bar with search and sync button */}
-          <s-stack direction="inline" gap="small" alignItems="center">
+          {/* Top bar with search, sync button, and today's date */}
+          <s-stack direction="inline" gap="small" alignItems="center" wrap={false}>
             <s-search-field
               label="Search products"
               placeholder="Search by name"
@@ -106,6 +133,7 @@ export default function TodaysInventory() {
             <s-button variant="secondary" onClick={handleSync}>
               Sync
             </s-button>
+            <s-text>📅 {todayDateString}</s-text>
           </s-stack>
 
           {/* Info banner about unfulfilled data */}
@@ -155,6 +183,39 @@ export default function TodaysInventory() {
                   <s-table-cell>{product.unfulfilled.damage}</s-table-cell>
                 </s-table-row>
               ))}
+              {/* Totals row */}
+              <s-table-row tone="strong">
+                <s-table-cell>
+                  <s-text weight="bold">Totals</s-text>
+                </s-table-cell>
+                <s-table-cell />
+                {/* Fulfilled totals */}
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.sells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.manualSells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.return}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.fulfilled.damage}</s-text>
+                </s-table-cell>
+                {/* Unfulfilled totals */}
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.sells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.manualSells}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.return}</s-text>
+                </s-table-cell>
+                <s-table-cell>
+                  <s-text weight="bold">{totals.unfulfilled.damage}</s-text>
+                </s-table-cell>
+              </s-table-row>
             </s-table-body>
           </s-table>
         </s-stack>
