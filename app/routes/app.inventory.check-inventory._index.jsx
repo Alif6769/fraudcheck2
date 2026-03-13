@@ -375,7 +375,7 @@ export default function CheckInventory() {
                         <s-date-field
                           label=""
                           value={row.fromDate}
-                          onInput={(event) => {
+                          onChange={(event) => {
                             const value =
                               event.detail?.value ??
                               event.target?.value ??
@@ -396,7 +396,7 @@ export default function CheckInventory() {
                           label=""
                           placeholder="00:00"
                           value={row.fromTime}
-                          onInput={(event) => {
+                          onChange={(event) => {
                             const value =
                               event.target?.value ??
                               event.currentTarget?.value ??
@@ -415,7 +415,7 @@ export default function CheckInventory() {
                         <s-date-field
                           label=""
                           value={row.toDate}
-                          onInput={(event) => {
+                          onChange={(event) => {
                             const value =
                               event.detail?.value ??
                               event.target?.value ??
@@ -436,7 +436,7 @@ export default function CheckInventory() {
                           label=""
                           placeholder="23:59"
                           value={row.toTime}
-                          onInput={(event) => {
+                          onChange={(event) => {
                             const value =
                               event.target?.value ??
                               event.currentTarget?.value ??
