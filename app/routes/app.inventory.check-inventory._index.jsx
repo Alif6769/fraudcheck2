@@ -19,12 +19,24 @@ export async function loader() {
   return { products };
 }
 
+function parseLocalToUTC(dateTimeStr, offsetMinutes) {
+  const [datePart, timePart] = dateTimeStr.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute] = timePart.split(':').map(Number);
+  // Create a UTC date from the local components
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  // Adjust by the offset (local = UTC - offset, so UTC = local + offset)
+  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
+  return utcDate;
+}
+
 // Action: sync + process orders for the given date range
 export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const from = formData.get("from");
   const to = formData.get("to");
+  const tzOffset = parseInt(formData.get("tzOffset") || "0");
 
   console.log("DEBUG action formData:", { from, to });
 
@@ -33,8 +45,8 @@ export async function action({ request }) {
     return new Response("Missing date range", { status: 400 });
   }
 
-  const requestedFrom = new Date(from);
-  const requestedTo = new Date(to);
+  const requestedFrom = parseLocalToUTC(from, tzOffset);
+  const requestedTo = parseLocalToUTC(to, tzOffset);
 
   console.log("DEBUG action parsed dates:", {
     requestedFrom: requestedFrom.toISOString(),
@@ -86,6 +98,10 @@ export default function CheckInventory() {
     const formData = new FormData();
     formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     formData.set("to", `${toDate}T${toTime || "23:59"}`);
+    // Get client's timezone offset in minutes (e.g., -360 for UTC+6)
+    const tzOffset = new Date().getTimezoneOffset();
+    formData.set("tzOffset", tzOffset);
+    fetcher.submit(formData, { method: "post" });
 
     console.log("DEBUG handleProcessAll sending formData:", {
       from: `${fromDate}T${fromTime || "00:00"}`,
