@@ -1,491 +1,234 @@
-// app/routes/app.inventory.check-inventory.jsx
-import { useFetcher, useLoaderData } from "react-router";
-import { useState } from "react";
-import { authenticate } from "../shopify.server";
+import { useLoaderData, useFetcher, useNavigate } from "react-router";
+import { useState, useEffect } from "react";
 import prisma from "../db.server";
-import {
-  syncFulfilledOrdersForRange,
-  processFulfilledOrdersWithRange,
-} from "../services/inventory.server";
+import { authenticate } from "../shopify.server";
 
-// Loader to fetch products (raw or combo)
-export async function loader() {
+// Helper: Convert a local date string (YYYY-MM-DD) + time + offset to UTC Date
+function parseLocalToUTC(dateStr, timeStr, offsetMinutes) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute] = timeStr.split(':').map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
+  return utcDate;
+}
+
+export async function loader({ request }) {
+  await authenticate.admin(request);
+
+  const url = new URL(request.url);
+  const tzOffset = parseInt(url.searchParams.get("tzOffset") || "0");
+
+  // Compute local yesterday start/end using the client's offset
+  const now = new Date(); // server current time (but we'll use offset to get client's local date)
+  // Get client's current local date by adjusting server time with offset
+  const clientNow = new Date(now.getTime() + tzOffset * 60000);
+  const year = clientNow.getUTCFullYear();
+  const month = clientNow.getUTCMonth();
+  const day = clientNow.getUTCDate();
+
+  // Local start of yesterday (client's timezone)
+  const yesterdayDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
+  const startUTC = parseLocalToUTC(yesterdayDateStr, "00:00", tzOffset);
+  const endUTC = parseLocalToUTC(yesterdayDateStr, "23:59", tzOffset);
+
+  // For display, we also need the client's yesterday date and today date
+  const todayISO = clientNow.toISOString();
+  const yesterdayISO = new Date(clientNow.getTime() - 86400000).toISOString();
+
+  // Fetch products
   const products = await prisma.product.findMany({
     where: {
       OR: [{ rawProductFlag: true }, { isCombo: true }],
     },
     orderBy: { productName: "asc" },
   });
-  return { products };
-}
 
-function parseLocalToUTC(dateTimeStr, offsetMinutes) {
-  const [datePart, timePart] = dateTimeStr.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hour, minute] = timePart.split(':').map(Number);
-  // Create a UTC date from the local components
-  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  // Adjust by the offset (local = UTC - offset, so UTC = local + offset)
-  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
-  return utcDate;
-}
-
-// Action: sync + process orders for the given date range
-export async function action({ request }) {
-  const { session, admin } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent") || "process-orders";
-  const from = formData.get("from");
-  const to = formData.get("to");
-  const tzOffset = parseInt(formData.get("tzOffset") || "0");
-
-  console.log("DEBUG action formData:", { from, to });
-
-  if (!from || !to) {
-    console.log("DEBUG action: missing from/to, returning 400");
-    return new Response("Missing date range", { status: 400 });
-  }
-
-  const requestedFrom = parseLocalToUTC(from, tzOffset);
-  const requestedTo = parseLocalToUTC(to, tzOffset);
-
-  if (intent === "product-search") {
-    const productId = formData.get("productId");
-    if (!productId) {
-      return new Response("Missing productId", { status: 400 });
-    }
-
-    // Get product name from database
-    const product = await prisma.product.findUnique({
-      where: { productId },
-      select: { productName: true },
-    });
-
-    if (!product) {
-      return new Response("Product not found", { status: 404 });
-    }
-
-    // Query transactions for this product in the date range
-    const transactions = await prisma.productTransaction.groupBy({
-      by: ['type'],
-      where: {
-        productId,
-        timestamp: {
-          gte: requestedFrom,
-          lte: requestedTo,
-        },
+  // Fetch transactions in UTC range
+  const transactions = await prisma.productTransaction.findMany({
+    where: {
+      timestamp: {
+        gte: startUTC,
+        lte: endUTC,
       },
-      _sum: {
-        quantity: true,
-      },
-    });
-
-    // Build totals object with default 0 for each type
-    const totals = {
-      SALE: 0,
-      RETURN: 0,
-      DAMAGE: 0,
-      MANUAL_SALE: 0,
-    };
-    transactions.forEach((t) => {
-      totals[t.type] = t._sum.quantity || 0;
-    });
-
-    return {
-      success: true,
-      productId,
-      productName: product.productName,
-      totals,
-      from,
-      to,
-    };
-  }
-
-  console.log("DEBUG action parsed dates:", {
-    requestedFrom: requestedFrom.toISOString(),
-    requestedTo: requestedTo.toISOString(),
+    },
   });
 
-  await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
-  const result = await processFulfilledOrdersWithRange(
-    requestedFrom,
-    requestedTo,
-    session.shop
-  );
+  // Aggregate totals per product
+  const totalsMap = {};
+  for (const txn of transactions) {
+    if (!totalsMap[txn.productId]) {
+      totalsMap[txn.productId] = { SALE: 0, MANUAL_SALE: 0, RETURN: 0, DAMAGE: 0 };
+    }
+    totalsMap[txn.productId][txn.type] += txn.quantity;
+  }
 
-  return { success: true, ...result };
+  const productsWithTotals = products.map((product) => ({
+    ...product,
+    fulfilled: {
+      sells: totalsMap[product.productId]?.SALE || 0,
+      manualSells: totalsMap[product.productId]?.MANUAL_SALE || 0,
+      return: totalsMap[product.productId]?.RETURN || 0,
+      damage: totalsMap[product.productId]?.DAMAGE || 0,
+    },
+    unfulfilled: { sells: 0, manualSells: 0, return: 0, damage: 0 },
+  }));
+
+  return {
+    products: productsWithTotals,
+    todayISO,
+    yesterdayISO,
+  };
 }
 
-export default function CheckInventory() {
-  const { products } = useLoaderData();
+export default function TodaysInventory() {
+  const { products, todayISO, yesterdayISO } = useLoaderData();
   const fetcher = useFetcher();
-  const productFetcher = useFetcher();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
 
-  // Global date range state
-  const [fromDate, setFromDate] = useState("");
-  const [fromTime, setFromTime] = useState("00:00");
-  const [toDate, setToDate] = useState("");
-  const [toTime, setToTime] = useState("23:59");
+  // If no tzOffset in URL, redirect with current offset
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("tzOffset")) {
+      const offset = new Date().getTimezoneOffset();
+      url.searchParams.set("tzOffset", offset);
+      navigate(url.pathname + url.search, { replace: true });
+    }
+  }, [navigate]);
 
-  // Per‑product rows
-  const [productRows, setProductRows] = useState(
-    products.map((product) => ({
-      productId: product.productId,   // ✅ use Shopify product ID
-      name: product.productName,
-      fromDate: "",
-      fromTime: "",
-      toDate: "",
-      toTime: "",
-    }))
+  const today = new Date(todayISO);
+  const yesterday = new Date(yesterdayISO);
+
+  const formattedToday = today.toLocaleDateString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+  });
+  const formattedYesterday = yesterday.toLocaleDateString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+  });
+
+  const handleSync = () => alert("Sync not implemented yet.");
+
+  const filteredProducts = products.filter((p) =>
+    p.productName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const isSubmitting = fetcher.state === "submitting";
-
-  const handleProcessAll = () => {
-    console.log("DEBUG handleProcessAll state (before submit):", {
-      fromDate,
-      fromTime,
-      toDate,
-      toTime,
-    });
-
-    const formData = new FormData();
-    formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
-    formData.set("to", `${toDate}T${toTime || "23:59"}`);
-    // Get client's timezone offset in minutes (e.g., -360 for UTC+6)
-    const tzOffset = new Date().getTimezoneOffset();
-    formData.set("tzOffset", tzOffset);
-    fetcher.submit(formData, { method: "post" });
-
-    console.log("DEBUG handleProcessAll sending formData:", {
-      from: `${fromDate}T${fromTime || "00:00"}`,
-      to: `${toDate}T${toTime || "23:59"}`,
-    });
-
-    fetcher.submit(formData, { method: "post" });
-  };
-
-  const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
-    const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
-    const toStr = toDate ? `${toDate}T${toTime || "23:59"}` : null;
-    if (!fromStr || !toStr) {
-      alert("Please select both from and to dates/times");
-      return;
+  const totals = filteredProducts.reduce(
+    (acc, p) => {
+      acc.fulfilled.sells += p.fulfilled.sells;
+      acc.fulfilled.manualSells += p.fulfilled.manualSells;
+      acc.fulfilled.return += p.fulfilled.return;
+      acc.fulfilled.damage += p.fulfilled.damage;
+      acc.unfulfilled.sells += p.unfulfilled.sells;
+      acc.unfulfilled.manualSells += p.unfulfilled.manualSells;
+      acc.unfulfilled.return += p.unfulfilled.return;
+      acc.unfulfilled.damage += p.unfulfilled.damage;
+      return acc;
+    },
+    {
+      fulfilled: { sells: 0, manualSells: 0, return: 0, damage: 0 },
+      unfulfilled: { sells: 0, manualSells: 0, return: 0, damage: 0 },
     }
-    const formData = new FormData();
-    formData.set("intent", "product-search");
-    formData.set("productId", productId); // ✅ now uses the correct ID
-    formData.set("from", fromStr);
-    formData.set("to", toStr);
-    formData.set("tzOffset", new Date().getTimezoneOffset());
-    productFetcher.submit(formData, { method: "post" });
-  };
-
-  const handleProductFieldChange = (productId, field, value) => {
-    setProductRows((rows) =>
-      rows.map((row) =>
-        row.productId === productId ? { ...row, [field]: value } : row
-      )
-    );
-  };
+  );
 
   return (
-    <s-page heading="Check inventory" inlineSize="large">
+    <s-page heading="Today's Inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Informational banner */}
-          <s-banner tone="info">
-            DEBUG MODE: watch the console for date/time state and form data.
-            Select a date range and click "Process orders".
-          </s-banner>
+          {/* Date info */}
+          <s-text type="subdued">
+            Today: {formattedToday} | Showing fulfilled data for yesterday ({formattedYesterday})
+          </s-text>
 
-          {/* DEBUG: show raw state values */}
-          <s-banner tone="info">
-            <s-text type="strong">DEBUG current state:</s-text>
-            <s-text>fromDate: "{fromDate}"</s-text>
-            <s-text>fromTime: "{fromTime}"</s-text>
-            <s-text>toDate: "{toDate}"</s-text>
-            <s-text>toTime: "{toTime}"</s-text>
-          </s-banner>
-
-          {/* Global date range controls */}
-          <s-stack gap="small">
-            <s-heading>Overall date range</s-heading>
-
-            {/* DEBUG: show raw state values */}
-            <s-banner tone="info">
-              <s-text type="strong">DEBUG current state:</s-text>
-              <s-text>fromDate: "{fromDate}"</s-text>
-              <s-text>fromTime: "{fromTime}"</s-text>
-              <s-text>toDate: "{toDate}"</s-text>
-              <s-text>toTime: "{toTime}"</s-text>
-            </s-banner>
-
-            <s-stack direction="inline" gap="small" alignItems="center">
-              {/* From */}
-              <s-stack gap="small">
-                <s-text type="strong">From</s-text>
-                <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-date-field
-                    label="Date"
-                    value={fromDate}
-                    // CHANGE: use onChange instead of onInput
-                    onChange={(event) => {
-                      console.log("DEBUG fromDate onChange event:", event);
-                      // Try the most likely places first
-                      const value =
-                        // If it's a web component custom event
-                        event.detail?.value ??
-                        // If React maps to a normal input event
-                        event.target?.value ??
-                        event.currentTarget?.value ??
-                        "";
-                      console.log("DEBUG fromDate extracted value:", value);
-                      setFromDate(value);
-                    }}
-                  />
-                  <s-text-field
-                    label="Time (HH:MM)"
-                    placeholder="00:00"
-                    value={fromTime}
-                    onChange={(event) => {
-                      console.log("DEBUG fromTime onChange event:", event);
-                      const value =
-                        event.target?.value ??
-                        event.currentTarget?.value ??
-                        "";
-                      console.log("DEBUG fromTime extracted value:", value);
-                      setFromTime(value);
-                    }}
-                  />
-                </s-stack>
-              </s-stack>
-
-              {/* To */}
-              <s-stack gap="small">
-                <s-text type="strong">To</s-text>
-                <s-stack direction="inline" gap="small" alignItems="center">
-                  <s-date-field
-                    label="Date"
-                    value={toDate}
-                    onChange={(event) => {
-                      console.log("DEBUG toDate onChange event:", event);
-                      const value =
-                        event.detail?.value ??
-                        event.target?.value ??
-                        event.currentTarget?.value ??
-                        "";
-                      console.log("DEBUG toDate extracted value:", value);
-                      setToDate(value);
-                    }}
-                  />
-                  <s-text-field
-                    label="Time (HH:MM)"
-                    placeholder="23:59"
-                    value={toTime}
-                    onChange={(event) => {
-                      console.log("DEBUG toTime onChange event:", event);
-                      const value =
-                        event.target?.value ??
-                        event.currentTarget?.value ??
-                        "";
-                      console.log("DEBUG toTime extracted value:", value);
-                      setToTime(value);
-                    }}
-                  />
-                </s-stack>
-              </s-stack>
-
-              <s-button
-                variant="primary"
-                loading={isSubmitting}
-                onClick={handleProcessAll}
-              >
-                Process orders
-              </s-button>
-            </s-stack>
+          {/* Top bar: search + sync button */}
+          <s-stack direction="inline" gap="small" alignItems="center">
+            <s-search-field
+              label="Search products"
+              placeholder="Search by name"
+              value={search}
+              onInput={(e) => setSearch(e.currentTarget.value)}
+            />
+            <s-button variant="secondary" onClick={handleSync}>
+              Sync
+            </s-button>
           </s-stack>
 
-          {/* Success banner with detailed range info */}
-          {fetcher.data?.success && fetcher.data.range && (
-            <s-banner tone="success">
-              <s-stack gap="small">
-                <s-text>✅ Successfully processed orders!</s-text>
-                <s-text>
-                  Date range:{" "}
-                  {new Date(
-                    fetcher.data.range.fromDateTime
-                  ).toLocaleString()}{" "}
-                  –{" "}
-                  {new Date(
-                    fetcher.data.range.toDateTime
-                  ).toLocaleString()}
-                </s-text>
-                <s-text>
-                  Orders processed: {fetcher.data.processedOrders}
-                </s-text>
-                {fetcher.data.range.processedOrderNameFrom &&
-                  fetcher.data.range.processedOrderNameTo && (
-                    <s-text>
-                      Order range:{" "}
-                      {fetcher.data.range.processedOrderNameFrom} –{" "}
-                      {fetcher.data.range.processedOrderNameTo}
-                    </s-text>
-                  )}
-                <s-text>
-                  Transactions created: {fetcher.data.transactionsCreated}
-                </s-text>
-              </s-stack>
-            </s-banner>
-          )}
+          {/* Info banner */}
+          <s-banner tone="info">
+            ⚠️ Unfulfilled data is pending implementation. It will show quantities from open orders soon.
+          </s-banner>
 
-          {/* Per‑product search results banner */}
-          {productFetcher.data?.success && productFetcher.data.productId && (
-            <s-banner tone="info">
-              <s-stack gap="small">
-                <s-text>📊 Product transaction summary</s-text>
-                <s-text>Product: {productFetcher.data.productName}</s-text>
-                <s-text>From {productFetcher.data.from} to {productFetcher.data.to}</s-text>
-                <s-text>Sales: {productFetcher.data.totals.SALE}</s-text>
-                <s-text>Returns: {productFetcher.data.totals.RETURN}</s-text>
-                <s-text>Damages: {productFetcher.data.totals.DAMAGE}</s-text>
-                <s-text>Manual Sales: {productFetcher.data.totals.MANUAL_SALE}</s-text>
-              </s-stack>
-            </s-banner>
-          )}
+          {/* Table with two‑header row */}
+          <s-table variant="auto">
+            {/* First header row */}
+            <s-table-header-row>
+              <s-table-header listSlot="primary" rowspan="2">
+                Product
+              </s-table-header>
+              <s-table-header rowspan="2">
+                Type
+              </s-table-header>
+              <s-table-header colspan="4">
+                Fulfilled (yesterday)
+              </s-table-header>
+              <s-table-header colspan="4">
+                Unfulfilled
+              </s-table-header>
+            </s-table-header-row>
 
-          {/* Per‑product table (unchanged except debug logging) */}
-          <s-section padding="base">
-            <s-stack gap="small">
-              <s-heading>Per‑product ranges (DEBUG logs on change)</s-heading>
+            {/* Second header row (exactly 8 cells) */}
+            <s-table-header-row>
+              <s-table-header>Sells</s-table-header>
+              <s-table-header>Manual sells</s-table-header>
+              <s-table-header>Return</s-table-header>
+              <s-table-header>Damage</s-table-header>
+              <s-table-header>Sells</s-table-header>
+              <s-table-header>Manual sells</s-table-header>
+              <s-table-header>Return</s-table-header>
+              <s-table-header>Damage</s-table-header>
+            </s-table-header-row>
 
-              <s-stack direction="inline" gap="small" alignItems="center">
-                <s-search-field
-                  label="Search products"
-                  placeholder="Search by title"
-                  onInput={() => {}}
-                />
-              </s-stack>
+            {/* Table body */}
+            <s-table-body>
+              {filteredProducts.map((product) => (
+                <s-table-row key={product.id}>
+                  <s-table-cell>
+                    <s-text type="strong">{product.productName}</s-text>
+                  </s-table-cell>
+                  <s-table-cell>
+                    {product.isCombo ? "Combo" : "Raw"}
+                  </s-table-cell>
+                  {/* Fulfilled */}
+                  <s-table-cell>{product.fulfilled.sells}</s-table-cell>
+                  <s-table-cell>{product.fulfilled.manualSells}</s-table-cell>
+                  <s-table-cell>{product.fulfilled.return}</s-table-cell>
+                  <s-table-cell>{product.fulfilled.damage}</s-table-cell>
+                  {/* Unfulfilled */}
+                  <s-table-cell>{product.unfulfilled.sells}</s-table-cell>
+                  <s-table-cell>{product.unfulfilled.manualSells}</s-table-cell>
+                  <s-table-cell>{product.unfulfilled.return}</s-table-cell>
+                  <s-table-cell>{product.unfulfilled.damage}</s-table-cell>
+                </s-table-row>
+              ))}
 
-              <s-table variant="auto">
-                <s-table-header-row>
-                  <s-table-header listSlot="primary">Product</s-table-header>
-                  <s-table-header>From date</s-table-header>
-                  <s-table-header>From time</s-table-header>
-                  <s-table-header>To date</s-table-header>
-                  <s-table-header>To time</s-table-header>
-                  <s-table-header listSlot="inline">Search</s-table-header>
-                </s-table-header-row>
-
-                <s-table-body>
-                  {productRows.map((row) => (
-                    <s-table-row key={row.productId}>
-                      <s-table-cell>
-                        <s-text type="strong">{row.name}</s-text>
-                      </s-table-cell>
-
-                      <s-table-cell>
-                        <s-date-field
-                          label=""
-                          value={row.fromDate}
-                          onChange={(event) => {
-                            const value =
-                              event.detail?.value ??
-                              event.target?.value ??
-                              event.currentTarget?.value ??
-                              "";
-                            console.log("DEBUG row.fromDate onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
-                            handleProductFieldChange(row.productId, "fromDate", value);
-                          }}
-                        />
-                      </s-table-cell>
-
-                      <s-table-cell>
-                        <s-text-field
-                          label=""
-                          placeholder="00:00"
-                          value={row.fromTime}
-                          onChange={(event) => {
-                            const value =
-                              event.target?.value ??
-                              event.currentTarget?.value ??
-                              "";
-                            console.log("DEBUG row.fromTime onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
-                            handleProductFieldChange(row.productId, "fromTime", value);
-                          }}
-                        />
-                      </s-table-cell>
-
-                      <s-table-cell>
-                        <s-date-field
-                          label=""
-                          value={row.toDate}
-                          onChange={(event) => {
-                            const value =
-                              event.detail?.value ??
-                              event.target?.value ??
-                              event.currentTarget?.value ??
-                              "";
-                            console.log("DEBUG row.toDate onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
-                            handleProductFieldChange(row.productId, "toDate", value);
-                          }}
-                        />
-                      </s-table-cell>
-
-                      <s-table-cell>
-                        <s-text-field
-                          label=""
-                          placeholder="23:59"
-                          value={row.toTime}
-                          onChange={(event) => {
-                            const value =
-                              event.target?.value ??
-                              event.currentTarget?.value ??
-                              "";
-                            console.log("DEBUG row.toTime onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
-                            handleProductFieldChange(row.productId, "toTime", value);
-                          }}
-                        />
-                      </s-table-cell>
-
-                      <s-table-cell>
-                        <s-button
-                          variant="secondary"
-                          onClick={() =>
-                            handleProductSearch(
-                              row.productId,
-                              row.fromDate,
-                              row.fromTime,
-                              row.toDate,
-                              row.toTime
-                            )
-                          }
-                        >
-                          Search
-                        </s-button>
-                      </s-table-cell>
-                    </s-table-row>
-                  ))}
-                </s-table-body>
-              </s-table>
-            </s-stack>
-          </s-section>
+              {/* Totals row */}
+              <s-table-row>
+                <s-table-cell>
+                  <s-text weight="bold">Total</s-text>
+                </s-table-cell>
+                <s-table-cell /> {/* empty Type */}
+                {/* Fulfilled totals */}
+                <s-table-cell><s-text weight="bold">{totals.fulfilled.sells}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.fulfilled.manualSells}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.fulfilled.return}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.fulfilled.damage}</s-text></s-table-cell>
+                {/* Unfulfilled totals */}
+                <s-table-cell><s-text weight="bold">{totals.unfulfilled.sells}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.unfulfilled.manualSells}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.unfulfilled.return}</s-text></s-table-cell>
+                <s-table-cell><s-text weight="bold">{totals.unfulfilled.damage}</s-text></s-table-cell>
+              </s-table-row>
+            </s-table-body>
+          </s-table>
         </s-stack>
       </s-section>
     </s-page>
