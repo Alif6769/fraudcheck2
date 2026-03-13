@@ -14,27 +14,73 @@ function parseLocalToUTC(dateStr, timeStr, offsetMinutes) {
 
 export async function loader({ request }) {
   await authenticate.admin(request);
+  await authenticate.admin(request);
 
   const url = new URL(request.url);
   const tzOffset = parseInt(url.searchParams.get("tzOffset") || "0");
+  console.log("🟢 tzOffset from client:", tzOffset);
 
   // Get client's current local date using offset
-  const now = new Date();
-  const clientNow = new Date(now.getTime() + tzOffset * 60000);
+  const serverNow = new Date();
+  console.log("🟢 serverNow (UTC):", serverNow.toISOString());
+
+  const clientLocalTimestamp = serverNow.getTime() - tzOffset * 60000;
+  const clientNow = new Date(clientLocalTimestamp);
+  console.log("🟢 clientNow (local, as computed):", clientNow.toISOString(), "should be local time");
+  console.log("🟢 clientNow local components:", {
+    year: clientNow.getUTCFullYear(),
+    month: clientNow.getUTCMonth() + 1,
+    day: clientNow.getUTCDate(),
+    hour: clientNow.getUTCHours(),
+    minute: clientNow.getUTCMinutes()
+  });
+
   const year = clientNow.getUTCFullYear();
-  const month = clientNow.getUTCMonth();
+  const month = clientNow.getUTCMonth(); // 0-11
   const day = clientNow.getUTCDate();
 
-  // Yesterday's date in client's local time
-  const yesterdayDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
+  // Yesterday's local date using Date constructor (handles rollover)
+  const yesterdayLocal = new Date(year, month, day - 1);
+  const yesterdayYear = yesterdayLocal.getFullYear();
+  const yesterdayMonth = yesterdayLocal.getMonth() + 1;
+  const yesterdayDay = yesterdayLocal.getDate();
+  console.log("🟢 yesterdayLocal (local Date object):", yesterdayLocal.toString());
+  console.log("🟢 yesterdayLocal components:", { yesterdayYear, yesterdayMonth, yesterdayDay });
 
-  // Convert yesterday's start/end to UTC for database queries
+  const yesterdayDateStr = `${yesterdayYear}-${String(yesterdayMonth).padStart(2, '0')}-${String(yesterdayDay).padStart(2, '0')}`;
+  console.log("🟢 yesterdayDateStr:", yesterdayDateStr);
+
   const startUTC = parseLocalToUTC(yesterdayDateStr, "00:00", tzOffset);
   const endUTC   = parseLocalToUTC(yesterdayDateStr, "23:59", tzOffset);
+  console.log("🟢 startUTC for query:", startUTC.toISOString());
+  console.log("🟢 endUTC for query:", endUTC.toISOString());
 
-  // For display, get ISO strings of today and yesterday (client local)
-  const todayISO   = clientNow.toISOString();
-  const yesterdayISO = new Date(clientNow.getTime() - 86400000).toISOString();
+  // For display
+  const todayISO = clientNow.toISOString();
+  const yesterdayISO = new Date(clientLocalTimestamp - 86400000).toISOString();
+  console.log("🟢 todayISO (client local, as UTC string):", todayISO);
+  console.log("🟢 yesterdayISO (client local, as UTC string):", yesterdayISO);
+
+  // const url = new URL(request.url);
+  // const tzOffset = parseInt(url.searchParams.get("tzOffset") || "0");
+
+  // // Get client's current local date using offset
+  // const now = new Date();
+  // const clientNow = new Date(now.getTime() + tzOffset * 60000);
+  // const year = clientNow.getUTCFullYear();
+  // const month = clientNow.getUTCMonth();
+  // const day = clientNow.getUTCDate();
+
+  // // Yesterday's date in client's local time
+  // const yesterdayDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}`;
+
+  // // Convert yesterday's start/end to UTC for database queries
+  // const startUTC = parseLocalToUTC(yesterdayDateStr, "00:00", tzOffset);
+  // const endUTC   = parseLocalToUTC(yesterdayDateStr, "23:59", tzOffset);
+
+  // // For display, get ISO strings of today and yesterday (client local)
+  // const todayISO   = clientNow.toISOString();
+  // const yesterdayISO = new Date(clientNow.getTime() - 86400000).toISOString();
 
   // Fetch products (raw or combo)
   const products = await prisma.product.findMany({
@@ -134,6 +180,18 @@ export default function TodaysInventory() {
           <s-text type="subdued">
             Today: {formattedToday} | Showing fulfilled data for yesterday ({formattedYesterday})
           </s-text>
+          <s-banner tone="warning">
+            <s-stack gap="small">
+              <s-text weight="bold">🧪 Debug Info</s-text>
+              <s-text>tzOffset (client): {new URL(window.location.href).searchParams.get("tzOffset")}</s-text>
+              <s-text>todayISO (from server): {todayISO}</s-text>
+              <s-text>yesterdayISO (from server): {yesterdayISO}</s-text>
+              <s-text>today.toLocaleDateString(): {today.toLocaleDateString()}</s-text>
+              <s-text>yesterday.toLocaleDateString(): {yesterday.toLocaleDateString()}</s-text>
+              <s-text>today valid? {isNaN(today.getTime()) ? "❌ Invalid" : "✅ Valid"}</s-text>
+              <s-text>yesterday valid? {isNaN(yesterday.getTime()) ? "❌ Invalid" : "✅ Valid"}</s-text>
+            </s-stack>
+          </s-banner>
 
           {/* Top bar: search + sync button */}
           <s-stack direction="inline" gap="small" alignItems="center">
