@@ -34,9 +34,20 @@ function parseLocalToUTC(dateTimeStr, offsetMinutes) {
 export async function action({ request }) {
   const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  const intent = formData.get("intent") || "process-orders";
   const from = formData.get("from");
   const to = formData.get("to");
   const tzOffset = parseInt(formData.get("tzOffset") || "0");
+
+  console.log("DEBUG action formData:", { from, to });
+
+  if (!from || !to) {
+    console.log("DEBUG action: missing from/to, returning 400");
+    return new Response("Missing date range", { status: 400 });
+  }
+
+  const requestedFrom = parseLocalToUTC(from, tzOffset);
+  const requestedTo = parseLocalToUTC(to, tzOffset);
 
   if (intent === "product-search") {
     const productId = formData.get("productId");
@@ -78,16 +89,6 @@ export async function action({ request }) {
       to,
     };
   }
-
-  console.log("DEBUG action formData:", { from, to });
-
-  if (!from || !to) {
-    console.log("DEBUG action: missing from/to, returning 400");
-    return new Response("Missing date range", { status: 400 });
-  }
-
-  const requestedFrom = parseLocalToUTC(from, tzOffset);
-  const requestedTo = parseLocalToUTC(to, tzOffset);
 
   console.log("DEBUG action parsed dates:", {
     requestedFrom: requestedFrom.toISOString(),
@@ -152,27 +153,20 @@ export default function CheckInventory() {
     fetcher.submit(formData, { method: "post" });
   };
 
-  const handleProductSearch = (
-    productId,
-    fromDate,
-    fromTime,
-    toDate,
-    toTime
-  ) => {
+  const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
     const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
     const toStr = toDate ? `${toDate}T${toTime || "23:59"}` : null;
-    console.log(`DEBUG product search`, {
-      productId,
-      fromDate,
-      fromTime,
-      toDate,
-      toTime,
-      fromStr,
-      toStr,
-    });
-    alert(
-      `Per‑product search not yet implemented. Selected range: ${fromStr} – ${toStr}`
-    );
+    if (!fromStr || !toStr) {
+      alert("Please select both from and to dates/times");
+      return;
+    }
+    const formData = new FormData();
+    formData.set("intent", "product-search");
+    formData.set("productId", productId);
+    formData.set("from", fromStr);
+    formData.set("to", toStr);
+    formData.set("tzOffset", new Date().getTimezoneOffset());
+    productFetcher.submit(formData, { method: "post" });
   };
 
   const handleProductFieldChange = (id, field, value) => {
