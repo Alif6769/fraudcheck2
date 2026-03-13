@@ -38,6 +38,47 @@ export async function action({ request }) {
   const to = formData.get("to");
   const tzOffset = parseInt(formData.get("tzOffset") || "0");
 
+  if (intent === "product-search") {
+    const productId = formData.get("productId");
+    if (!productId) {
+      return new Response("Missing productId", { status: 400 });
+    }
+
+    // Query transactions for this product in the date range
+    const transactions = await prisma.productTransaction.groupBy({
+      by: ['type'],
+      where: {
+        productId,
+        timestamp: {
+          gte: requestedFrom,
+          lte: requestedTo,
+        },
+      },
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    // Build totals object with default 0 for each type
+    const totals = {
+      SALE: 0,
+      RETURN: 0,
+      DAMAGE: 0,
+      MANUAL_SALE: 0,
+    };
+    transactions.forEach((t) => {
+      totals[t.type] = t._sum.quantity || 0;
+    });
+
+    return {
+      success: true,
+      productId,
+      totals,
+      from,
+      to,
+    };
+  }
+
   console.log("DEBUG action formData:", { from, to });
 
   if (!from || !to) {
@@ -286,6 +327,21 @@ export default function CheckInventory() {
                 <s-text>
                   Transactions created: {fetcher.data.transactionsCreated}
                 </s-text>
+              </s-stack>
+            </s-banner>
+          )}
+
+          {/* Per‑product search results banner */}
+          {productFetcher.data?.success && productFetcher.data.productId && (
+            <s-banner tone="info">
+              <s-stack gap="small">
+                <s-text>📊 Product transaction summary</s-text>
+                <s-text>Product ID: {productFetcher.data.productId}</s-text>
+                <s-text>From {productFetcher.data.from} to {productFetcher.data.to}</s-text>
+                <s-text>Sales: {productFetcher.data.totals.SALE}</s-text>
+                <s-text>Returns: {productFetcher.data.totals.RETURN}</s-text>
+                <s-text>Damages: {productFetcher.data.totals.DAMAGE}</s-text>
+                <s-text>Manual Sales: {productFetcher.data.totals.MANUAL_SALE}</s-text>
               </s-stack>
             </s-banner>
           )}

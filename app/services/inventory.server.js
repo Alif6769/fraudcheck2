@@ -1,6 +1,13 @@
 // app/services/inventory.server.js
 import prisma from "../db.server";
 
+// Helper to extract numeric part from order name "#Mehwish3125"
+function extractOrderNumber(orderName) {
+  const match = orderName.match(/\d+$/); // matches digits at the end
+  return match ? parseInt(match[0], 10) : null;
+}
+
+
 /**
  * Compute the effective [from, to] to process based on existing processed range.
  *
@@ -502,19 +509,36 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
         },
       });
     } else {
-      await tx.processedOrderRange.update({
-        where: { id: existingRange.id },
-        data: {
-          fromDateTime: newFromForRange,
-          toDateTime: newToForRange,
-          processedOrdersCount:
-            existingRange.processedOrdersCount + processedOrders,
-          processedOrderNameFrom:
-            existingRange.processedOrderNameFrom || orderNameFrom,
-          processedOrderNameTo:
-            existingRange.processedOrderNameTo || orderNameTo,
-        },
-      });
+        // Determine new min and max order names
+        let newFromName = existingRange.processedOrderNameFrom;
+        let newToName = existingRange.processedOrderNameTo;
+
+        if (orderNameFrom) {
+            const currentNum = extractOrderNumber(existingRange.processedOrderNameFrom);
+            const newNum = extractOrderNumber(orderNameFrom);
+            if (currentNum === null || (newNum !== null && newNum < currentNum)) {
+            newFromName = orderNameFrom;
+            }
+        }
+
+        if (orderNameTo) {
+            const currentNum = extractOrderNumber(existingRange.processedOrderNameTo);
+            const newNum = extractOrderNumber(orderNameTo);
+            if (currentNum === null || (newNum !== null && newNum > currentNum)) {
+            newToName = orderNameTo;
+            }
+        }
+      // Update the record
+        await tx.processedOrderRange.update({
+            where: { id: existingRange.id },
+            data: {
+            fromDateTime: newFromForRange,
+            toDateTime: newToForRange,
+            processedOrdersCount: existingRange.processedOrdersCount + processedOrders,
+            processedOrderNameFrom: newFromName,
+            processedOrderNameTo: newToName,
+            },
+        });
     }
 
     console.log(
