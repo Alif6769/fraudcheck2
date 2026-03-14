@@ -64,41 +64,66 @@ export async function loader({ request }) {
   const cancelledFrom = url.searchParams.get("cancelledFrom") || "";
   const cancelledTo = url.searchParams.get("cancelledTo") || "";
 
-  // Today's local date for display
+  // Compute client's current local date using offset
   const serverNow = new Date();
-  const clientLocalTimestamp = serverNow.getTime() - tzOffset * 60000;
-  const clientNow = new Date(clientLocalTimestamp);
+  const clientNow = new Date(serverNow.getTime() - tzOffset * 60000);
+  const year = clientNow.getUTCFullYear();
+  const month = clientNow.getUTCMonth();
+  const day = clientNow.getUTCDate();
+
+  // Default range for cancelled inputs: today's local start and end
+  const defaultStart = new Date(year, month, day, 0, 0, 0, 0);
+  const defaultEnd   = new Date(year, month, day, 23, 59, 59, 999);
+  const defaultStartLocal = defaultStart.toISOString().slice(0, 16);
+  const defaultEndLocal   = defaultEnd.toISOString().slice(0, 16);
+
+  // Today's display date
   const todayLocalStr = clientNow.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 
-  // Fetch snapshot for raw products (only rawProductFlag = true)
+  // Fetch snapshot for raw products
   const snapshot = await prisma.dailyInventorySnapshot.findMany({
     where: {
       shop,
       rawProductFlag: true,
     },
   });
-
-  // Map productId -> snapshot row
   const snapshotMap = new Map(snapshot.map(row => [row.productId, row]));
 
-  // If cancelled range provided, aggregate CancelledOrder for that range
+  // Aggregate cancelled totals if range provided
   let cancelledTotals = new Map(); // productId -> total quantity
   if (cancelledFrom && cancelledTo) {
     const fromUTC = parseLocalToUTC(cancelledFrom.split('T')[0], cancelledFrom.split('T')[1], tzOffset);
     const toUTC   = parseLocalToUTC(cancelledTo.split('T')[0],   cancelledTo.split('T')[1],   tzOffset);
-    const cancelledAgg = await prisma.cancelledOrder.groupBy({
-      by: ['productId'],
+    
+    // Fetch all cancelled orders in the range
+    const cancelledOrders = await prisma.cancelledOrder.findMany({
       where: {
         shop,
         cancelledAt: { gte: fromUTC, lte: toUTC },
       },
-      _sum: { quantity: true },
     });
-    cancelledTotals = new Map(cancelledAgg.map(c => [c.productId, c._sum.quantity]));
+
+    // Manually aggregate quantities from productIds JSON
+    for (const order of cancelledOrders) {
+      let productIds = [];
+      try {
+        productIds = JSON.parse(order.productIds);
+      } catch {
+        continue;
+      }
+      if (Array.isArray(productIds)) {
+        for (const item of productIds) {
+          if (item.productId && item.quantity) {
+            const current = cancelledTotals.get(item.productId) || 0;
+            cancelledTotals.set(item.productId, current + item.quantity);
+          }
+        }
+      }
+    }
   }
 
   // Build product list from snapshot
@@ -107,29 +132,24 @@ export async function loader({ request }) {
     productName: row.productName,
     price: row.price || 0,
     inventoryBefore: row.quantity || 0,
-    // Unfulfilled
     unfulfilledSells: row.unfulfilledSales || 0,
     unfulfilledManual: row.unfulfilledManual || 0,
     unfulfilledReturn: row.unfulfilledReturn || 0,
     unfulfilledDamage: row.unfulfilledDamage || 0,
-    // Fulfilled
     fulfilledSells: row.fulfilledSales || 0,
     fulfilledManual: row.fulfilledManual || 0,
     fulfilledReturn: row.fulfilledReturn || 0,
     fulfilledDamage: row.fulfilledDamage || 0,
-    // Cancelled (from range query)
     cancelledSells: cancelledTotals.get(row.productId) || 0,
   }));
 
-  // Compute final sells for each category
+  // Compute final sells
   products.forEach(p => {
     p.unfulfilledFinal = p.unfulfilledSells + p.unfulfilledManual - p.unfulfilledReturn;
     p.fulfilledFinal   = p.fulfilledSells   + p.fulfilledManual   - p.fulfilledReturn;
-    // Cancelled has only sells (others are 0 by design)
     p.cancelledFinal   = p.cancelledSells;
   });
 
-  // Overall totals (optional)
   const totals = {
     unfulfilledFinal: products.reduce((acc, p) => acc + p.unfulfilledFinal, 0),
     fulfilledFinal:   products.reduce((acc, p) => acc + p.fulfilledFinal, 0),
@@ -140,8 +160,8 @@ export async function loader({ request }) {
     products,
     totals,
     todayLocalStr,
-    cancelledFrom: cancelledFrom || getTodayLocalRange().startLocal,
-    cancelledTo: cancelledTo || getTodayLocalRange().endLocal,
+    cancelledFrom: cancelledFrom || defaultStartLocal,
+    cancelledTo: cancelledTo || defaultEndLocal,
     tzOffset,
   };
 }
