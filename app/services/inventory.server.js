@@ -429,15 +429,135 @@ export async function syncFulfilled(shop, tzOffset) {
   console.log(`✅ Synced fulfilled (yesterday) for shop ${shop}, updated ${allProductIds.size} products`);
 }
 
+
+const GET_CANCELLED = `
+  query getCancelledOrders($first: Int!, $after: String, $query: String!) {
+    orders(first: $first, after: $after, query: $query) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          createdAt
+          updatedAt
+          cancelledAt
+          displayFulfillmentStatus
+          customer {
+            id
+            firstName
+            lastName
+            defaultPhoneNumber { phoneNumber }
+          }
+          shippingAddress {
+            address1
+            city
+            country
+            phone
+          }
+          totalPriceSet { shopMoney { amount } }
+          shippingLines(first: 10) {
+            edges {
+              node {
+                originalPriceSet { shopMoney { amount } }
+              }
+            }
+          }
+          lineItems(first: 50) {
+            edges {
+              node {
+                id
+                product { id }
+                variant { id }
+                title
+                quantity
+              }
+            }
+          }
+          sourceName
+        }
+      }
+      pageInfo { hasNextPage }
+    }
+  }
+`;
+
 /**
- * Replaces the CancelledOrder table for a shop within a date range with new order data.
+ * Fetches cancelled orders from Shopify and replaces the CancelledOrder table
+ * for the given shop and date range.
+ *
  * @param {string} shop
- * @param {Array} ordersData - Array of order nodes from Shopify GraphQL (must include cancelledAt)
+ * @param {object} admin - Shopify admin GraphQL client
  * @param {Date} fromDate
  * @param {Date} toDate
+ * @returns {Promise<Array>} - array of *cancelled* order nodes
  */
-export async function updateCancelledOrders(shop, ordersData, fromDate, toDate) {
-  // Delete existing cancelled orders in this range
+export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
+  // 1. Build Shopify cancelled_at query
+  const fromStr = fromDate.toISOString();
+  const toStr = toDate.toISOString();
+  const queryString = `cancelled_at:>=${fromStr} cancelled_at:<=${toStr}`;
+
+  console.log('Fetching cancelled orders with query:', queryString);
+
+  // 2. Fetch all matching orders via pagination
+  let hasNextPage = true;
+  let cursor = null;
+  const allOrders = [];
+
+  while (hasNextPage) {
+    const response = await admin.graphql(GET_CANCELLED, {
+      variables: { first: 50, after: cursor, query: queryString },
+    });
+    const { data, errors } = await response.json();
+    if (errors) {
+      console.error('GraphQL errors fetching cancelled orders:', errors);
+      throw new Error('GraphQL error: ' + JSON.stringify(errors));
+    }
+
+    const edges = data?.orders?.edges || [];
+    const nodes = edges.map(e => e.node);
+
+    // Extra safety: only keep orders that actually have cancelledAt
+    const cancelledNodes = nodes.filter(n => n.cancelledAt);
+
+    allOrders.push(...cancelledNodes);
+
+    hasNextPage = data?.orders?.pageInfo?.hasNextPage || false;
+    cursor = edges.length ? edges[edges.length - 1].cursor : null;
+  }
+
+  // 🚩 This is the part you asked for: log *actual* order time range & names
+  if (allOrders.length > 0) {
+    // Sort a copy of the array by createdAt ascending
+    const byCreatedAt = [...allOrders].sort((a, b) => {
+      if (a.createdAt < b.createdAt) return -1;
+      if (a.createdAt > b.createdAt) return 1;
+      return 0;
+    });
+
+    const firstOrder = byCreatedAt[0];
+    const lastOrder = byCreatedAt[byCreatedAt.length - 1];
+
+    console.log(
+      `Fetched ${allOrders.length} cancelled orders for shop ${shop}.`
+    );
+    console.log(
+      `  First by createdAt:  ${firstOrder.name} at ${firstOrder.createdAt}`
+    );
+    console.log(
+      `  Last by createdAt:   ${lastOrder.name} at ${lastOrder.createdAt}`
+    );
+  } else {
+    console.log(
+      `No cancelled orders fetched for shop ${shop} (query: ${queryString})`
+    );
+  }
+
+  // If you *also* care about cancelledAt range, you can add:
+  // const byCancelledAt = [...allOrders].sort((a, b) => (a.cancelledAt < b.cancelledAt ? -1 : a.cancelledAt > b.cancelledAt ? 1 : 0));
+  // and then log byCancelledAt[0] / byCancelledAt[byCancelledAt.length - 1].
+
+  // 3. Delete existing cancelled orders for this shop & date range
   await prisma.cancelledOrder.deleteMany({
     where: {
       shop,
@@ -448,8 +568,18 @@ export async function updateCancelledOrders(shop, ordersData, fromDate, toDate) 
     },
   });
 
-  // Insert new orders
-  for (const node of ordersData) {
+  // 4. Insert new cancelled orders
+  for (const node of allOrders) {
+    // Absolute guard to avoid Prisma error if anything slips through
+    if (!node.cancelledAt) {
+      console.warn('Skipping non-cancelled order in updateCancelledOrders:', {
+        id: node.id,
+        name: node.name,
+        createdAt: node.createdAt,
+      });
+      continue;
+    }
+
     const productIds = (node.lineItems?.edges || []).map(item => ({
       productId: item.node.product?.id,
       quantity: item.node.quantity,
@@ -471,22 +601,35 @@ export async function updateCancelledOrders(shop, ordersData, fromDate, toDate) 
         lastName: node.customer?.lastName,
         contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber,
         shippingPhone: node.shippingAddress?.phone,
-        shippingAddress: node.shippingAddress ? JSON.stringify(node.shippingAddress) : null,
-        totalPrice: node.totalPriceSet?.shopMoney?.amount ?? "0",
-        shippingFee: node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ?? "0",
-        products: JSON.stringify(node.lineItems?.edges.map(i => ({ title: i.node.title, quantity: i.node.quantity }))),
+        shippingAddress: node.shippingAddress
+          ? JSON.stringify(node.shippingAddress)
+          : null,
+        totalPrice: node.totalPriceSet?.shopMoney?.amount ?? '0',
+        shippingFee:
+          node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney
+            ?.amount ?? '0',
+        products: JSON.stringify(
+          node.lineItems?.edges.map(i => ({
+            title: i.node.title,
+            quantity: i.node.quantity,
+          }))
+        ),
         productIds: JSON.stringify(productIds),
         source: node.sourceName,
       },
     });
   }
+
+  return allOrders;
 }
 
 /**
  * Sync cancelled orders from Shopify within a date range.
- * Fetches orders, updates CancelledOrder table, and refreshes daily snapshot.
+ * Fetches orders (via updateCancelledOrders), refreshes CancelledOrder table,
+ * and updates daily snapshot.
+ *
  * @param {string} shop
- * @param {object} session - Shopify session (for shop domain)
+ * @param {object} session - Shopify session (for shop domain) – not used here, but kept for signature
  * @param {object} admin - Shopify admin GraphQL client
  * @param {Date} fromDate - Start of range (inclusive)
  * @param {Date} toDate - End of range (inclusive)
@@ -498,90 +641,23 @@ export async function syncCancelled(shop, session, admin, fromDate, toDate) {
     data: { cancelledSales: 0 },
   });
 
-  // Build Shopify query
-  const fromStr = fromDate.toISOString();
-  const toStr = toDate.toISOString();
-  const queryString = `cancelled_at:>=${fromStr} cancelled_at:<=${toStr}`;
+  // Fetch + update CancelledOrder table (now inside updateCancelledOrders)
+  const allCancelledOrders = await updateCancelledOrders(
+    shop,
+    admin,
+    fromDate,
+    toDate
+  );
 
-  const GET_CANCELLED = `
-    query getCancelledOrders($first: Int!, $after: String, $query: String!) {
-      orders(first: $first, after: $after, query: $query) {
-        edges {
-          cursor
-          node {
-            id
-            name
-            createdAt
-            updatedAt
-            cancelledAt
-            displayFulfillmentStatus
-            customer {
-              id
-              firstName
-              lastName
-              defaultPhoneNumber { phoneNumber }
-            }
-            shippingAddress {
-              address1
-              city
-              country
-              phone
-            }
-            totalPriceSet { shopMoney { amount } }
-            shippingLines(first: 10) {
-              edges {
-                node {
-                  originalPriceSet { shopMoney { amount } }
-                }
-              }
-            }
-            lineItems(first: 50) {
-              edges {
-                node {
-                  id
-                  product { id }
-                  variant { id }
-                  title
-                  quantity
-                }
-              }
-            }
-          }
-        }
-        pageInfo { hasNextPage }
-      }
-    }
-  `;
-
-  let hasNextPage = true;
-  let cursor = null;
-  const allOrders = [];
-
-  while (hasNextPage) {
-    const response = await admin.graphql(GET_CANCELLED, {
-      variables: { first: 50, after: cursor, query: queryString },
-    });
-    const { data, errors } = await response.json();
-    if (errors) throw new Error('GraphQL error: ' + JSON.stringify(errors));
-
-    const orders = data?.orders?.edges || [];
-    allOrders.push(...orders.map(e => e.node));
-
-    hasNextPage = data?.orders?.pageInfo?.hasNextPage || false;
-    cursor = orders.length ? orders[orders.length - 1].cursor : null;
-  }
-
-  // Update CancelledOrder table
-  await updateCancelledOrders(shop, allOrders, fromDate, toDate);
-
-  // Aggregate product totals
+  // Aggregate product totals from cancelled orders
   const productTotals = new Map();
-  for (const node of allOrders) {
+  for (const node of allCancelledOrders) {
     const productIds = (node.lineItems?.edges || []).map(item => ({
       productId: item.node.product?.id,
       quantity: item.node.quantity,
       title: item.node.title,
     }));
+
     const orderObj = { productIds };
     const quantities = await decomposeOrder(orderObj, prisma);
     for (const [pid, qty] of quantities) {
@@ -603,13 +679,9 @@ export async function syncCancelled(shop, session, admin, fromDate, toDate) {
     });
   }
 
-  console.log(`✅ Synced cancelled orders for shop ${shop}, updated ${productTotals.size} products`);
-}
-
-// Helper to extract numeric part from order name "#Mehwish3125"
-function extractOrderNumber(orderName) {
-  const match = orderName.match(/\d+$/); // matches digits at the end
-  return match ? parseInt(match[0], 10) : null;
+  console.log(
+    `✅ Synced cancelled orders for shop ${shop}, updated ${productTotals.size} products`
+  );
 }
 
 
