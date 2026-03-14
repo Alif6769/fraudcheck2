@@ -7,6 +7,7 @@ import {
   syncUnfulfilled,
   syncCancelled,
   syncFulfilled,
+  processFulfilledOrdersWithRange,
 } from "../services/inventory.server";
 
 // Helper: Convert a local date (YYYY-MM-DD) + time + offset to UTC Date
@@ -136,6 +137,10 @@ export async function action({ request }) {
 
     // Step 1: Initialize snapshot (raw/combo products)
     await initializeDailySnapshot(shop);
+    
+    today = getTodayLocalRange()
+
+    await processFulfilledOrdersWithRange(fromDate, toDate, shop)
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
