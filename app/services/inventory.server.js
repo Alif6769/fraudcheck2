@@ -1004,87 +1004,77 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
     `🔄 Requested processing for shop=${shop} from ${fromDate.toISOString()} to ${toDate.toISOString()}`
   );
 
-  // Wrap everything in a transaction to keep things consistent
-  return await prisma.$transaction(async (tx) => {
-    // 1) Load existing processed range (if any) for this shop
-    const existingRange = await tx.processedOrderRange.findFirst({
-      where: { shop },
-      orderBy: { id: "desc" }, // latest record
-    });
-
-    const {
-      effectiveFrom,
-      effectiveTo,
-      newFromForRange,
-      newToForRange,
-    } = computeEffectiveRange(fromDate, toDate, existingRange);
-
-    // If null, nothing to process (fully inside the already-processed window)
-    if (!effectiveFrom || !effectiveTo) {
-      console.log(
-        `ℹ️ No new time window to process for shop=${shop} (fully inside existing range).`
-      );
-      return {
-        processedOrders: 0,
-        transactionsCreated: 0,
-        effectiveFrom: null,
-        effectiveTo: null,
-        range: existingRange ?? null,
-      };
-    }
-
-    console.log(
-      `⏱ Effective processing window for shop=${shop}: ${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()}`
-    );
-
-    // 3) Fetch orders that are fulfilled in that window (for product transactions)
-    const orders = await tx.order.findMany({
-      where: {
-        shop,
-        fulfillmentStatus: "FULFILLED",
-        fulfilledAt: {
-          gte: effectiveFrom,
-          lte: effectiveTo,
-        },
-      },
-      orderBy: { orderTime: "asc" },
-    });
-
-    console.log(`📦 Found ${orders.length} fulfilled orders in the window`);
-
-    let transactionsCreated = 0;
-
-    for (const order of orders) {
-      const created = await processOrderTransactions(order, tx);
-      transactionsCreated += created;
-    }
-
-    const processedOrders = orders.length;
-
-    // Compute orderNameFrom / orderNameTo (based on processed orders)
-    let orderNameFrom = null;
-    let orderNameTo = null;
-    if (processedOrders > 0) {
-      const sortedByName = [...orders].sort((a, b) =>
-        a.orderName.localeCompare(b.orderName)
-      );
-      orderNameFrom = sortedByName[0].orderName;
-      orderNameTo = sortedByName[sortedByName.length - 1].orderName;
-    }
-
-    // 4) Update or create ProcessedOrderRange record
-    if (!existingRange) {
-      // First time for this shop
-      await tx.processedOrderRange.create({
-        data: {
-          shop,
-          fromDateTime: newFromForRange,
-          toDateTime: newToForRange,
-          processedOrdersCount: processedOrders,
-          processedOrderNameFrom: orderNameFrom,
-          processedOrderNameTo: orderNameTo,
-        },
+  // Increase timeout to 2 minutes (adjust as needed)
+  return await prisma.$transaction(
+    async (tx) => {
+      // 1) Load existing processed range
+      const existingRange = await tx.processedOrderRange.findFirst({
+        where: { shop },
+        orderBy: { id: "desc" },
       });
+
+      const { effectiveFrom, effectiveTo, newFromForRange, newToForRange } =
+        computeEffectiveRange(fromDate, toDate, existingRange);
+
+      if (!effectiveFrom || !effectiveTo) {
+        console.log(`ℹ️ No new time window to process for shop=${shop}`);
+        return {
+          processedOrders: 0,
+          transactionsCreated: 0,
+          effectiveFrom: null,
+          effectiveTo: null,
+          range: existingRange ?? null,
+        };
+      }
+
+      console.log(
+        `⏱ Effective processing window: ${effectiveFrom.toISOString()} → ${effectiveTo.toISOString()}`
+      );
+
+      // 2) Fetch orders in that window
+      const orders = await tx.order.findMany({
+        where: {
+          shop,
+          fulfillmentStatus: "FULFILLED",
+          fulfilledAt: { gte: effectiveFrom, lte: effectiveTo },
+        },
+        orderBy: { orderTime: "asc" },
+      });
+
+      console.log(`📦 Found ${orders.length} fulfilled orders`);
+
+      let transactionsCreated = 0;
+
+      for (const order of orders) {
+        // Process each order sequentially to avoid overwhelming the transaction
+        const created = await processOrderTransactions(order, tx);
+        transactionsCreated += created;
+      }
+
+      // 3) Compute order name range
+      const processedOrders = orders.length;
+      let orderNameFrom = null,
+        orderNameTo = null;
+      if (processedOrders > 0) {
+        const sortedByName = [...orders].sort((a, b) =>
+          a.orderName.localeCompare(b.orderName)
+        );
+        orderNameFrom = sortedByName[0].orderName;
+        orderNameTo = sortedByName[sortedByName.length - 1].orderName;
+      }
+
+      // 4) Update ProcessedOrderRange
+      if (!existingRange) {
+        await tx.processedOrderRange.create({
+          data: {
+            shop,
+            fromDateTime: newFromForRange,
+            toDateTime: newToForRange,
+            processedOrdersCount: processedOrders,
+            processedOrderNameFrom: orderNameFrom,
+            processedOrderNameTo: orderNameTo,
+          },
+        });
     } else {
         // Determine new min and max order names
         let newFromName = existingRange.processedOrderNameFrom;
@@ -1123,16 +1113,22 @@ export async function processFulfilledOrdersWithRange(fromDate, toDate, shop) {
     );
 
     const finalRange = await tx.processedOrderRange.findFirst({
-      where: { shop },
-      orderBy: { id: "desc" },
-    });
+        where: { shop },
+        orderBy: { id: "desc" },
+      });
 
-    return {
-      processedOrders,
-      transactionsCreated,
-      effectiveFrom,
-      effectiveTo,
-      range: finalRange,
-    };
-  });
+      console.log(
+        `✅ Created ${transactionsCreated} transactions for ${processedOrders} orders`
+      );
+
+      return {
+        processedOrders,
+        transactionsCreated,
+        effectiveFrom,
+        effectiveTo,
+        range: finalRange,
+      };
+    },
+    { timeout: 120000 } // 2 minutes timeout
+  );
 }
