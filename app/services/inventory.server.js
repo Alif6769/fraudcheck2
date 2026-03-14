@@ -464,6 +464,8 @@ export async function updateCancelledOrders(shop, ordersData, fromDate, toDate) 
         orderTime: new Date(node.createdAt),
         updatedAt: node.updatedAt,
         cancelledAt: node.cancelledAt,
+        fromDateTime: fromDate,
+        toDateTime: toDate,
         customerId: node.customer?.id,
         firstName: node.customer?.firstName,
         lastName: node.customer?.lastName,
