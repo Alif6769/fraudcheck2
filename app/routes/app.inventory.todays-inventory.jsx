@@ -33,6 +33,28 @@ function getTodayLocalRange() {
   };
 }
 
+// Helper: Get UTC start and end for yesterday's full local day
+function getYesterdayUTCRange(tzOffset) {
+  const serverNow = new Date();
+  const clientNow = new Date(serverNow.getTime() - tzOffset * 60000);
+  const year = clientNow.getUTCFullYear();
+  const month = clientNow.getUTCMonth();
+  const day = clientNow.getUTCDate();
+
+  // Yesterday's local date
+  const yesterdayLocal = new Date(year, month, day - 1);
+  const yYear = yesterdayLocal.getFullYear();
+  const yMonth = yesterdayLocal.getMonth() + 1;
+  const yDay = yesterdayLocal.getDate();
+
+  const startStr = `${yYear}-${String(yMonth).padStart(2,'0')}-${String(yDay).padStart(2,'0')}T00:00`;
+  const endStr   = `${yYear}-${String(yMonth).padStart(2,'0')}-${String(yDay).padStart(2,'0')}T23:59`;
+
+  const startUTC = parseLocalToUTC(startStr.split('T')[0], startStr.split('T')[1], tzOffset);
+  const endUTC   = parseLocalToUTC(endStr.split('T')[0], endStr.split('T')[1], tzOffset);
+  return { startUTC, endUTC };
+}
+
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
@@ -138,9 +160,9 @@ export async function action({ request }) {
     // Step 1: Initialize snapshot (raw/combo products)
     await initializeDailySnapshot(shop);
     
-    // const today = getTodayLocalRange()
+    const { startUTC, endUTC } = getYesterdayUTCRange(tzOffset);
 
-    await processFulfilledOrdersWithRange(cancelledFrom, cancelledTo, shop)
+    await processFulfilledOrdersWithRange(startUTC, endUTC, shop)
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
