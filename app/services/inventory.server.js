@@ -287,6 +287,15 @@ export async function syncUnfulfilled(shop, session, admin) {
 
   // 5. Update DailyInventorySnapshot with new totals
   for (const [productId, totalQty] of productTotals) {
+    // Fetch product details to populate required fields
+    const product = await prisma.product.findUnique({
+      where: { productId },
+    });
+    if (!product) {
+      console.warn(`⚠️ Product ${productId} not found, skipping unfulfilled update`);
+      continue;
+    }
+
     await prisma.dailyInventorySnapshot.upsert({
       where: { productId },
       update: { unfulfilledSales: totalQty },
@@ -294,9 +303,22 @@ export async function syncUnfulfilled(shop, session, admin) {
         productId,
         shop,
         unfulfilledSales: totalQty,
-        // other fields need to be filled – we can fetch from Product or leave defaults
-        // This assumes the snapshot is initialized; if not, we might need to fetch product details.
-        // For simplicity, we assume the snapshot already exists (e.g., via initializeDailySnapshot).
+        // Copy all product fields
+        productName: product.productName,
+        price: product.price,
+        quantity: product.quantity,
+        description: product.description,
+        inventoryCategory: product.inventoryCategory,
+        productCategory: product.productCategory,
+        isCombo: product.isCombo,
+        rawProductFlag: product.rawProductFlag,
+        isDuplicate: product.isDuplicate,
+        rootProductId: product.rootProductId,
+        comboReference: product.comboReference,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+        todayDateTime: new Date(),
+        // other counters default to 0
       },
     });
   }
@@ -359,6 +381,15 @@ export async function syncFulfilled(shop, tzOffset) {
   // Update snapshot for each product that appears
   const allProductIds = new Set([...sales.keys(), ...manual.keys(), ...returns.keys(), ...damage.keys()]);
   for (const productId of allProductIds) {
+    // Fetch product details in case we need to create a new record
+    const product = await prisma.product.findUnique({
+      where: { productId },
+    });
+    if (!product) {
+      console.warn(`⚠️ Product ${productId} not found, skipping fulfilled update`);
+      continue;
+    }
+
     await prisma.dailyInventorySnapshot.upsert({
       where: { productId },
       update: {
@@ -369,37 +400,32 @@ export async function syncFulfilled(shop, tzOffset) {
       },
       create: {
         productId,
+        shop,
         fulfilledSales: sales.get(productId) || 0,
         fulfilledManual: manual.get(productId) || 0,
         fulfilledReturn: returns.get(productId) || 0,
         fulfilledDamage: damage.get(productId) || 0,
+        // Copy all required product fields
+        productName: product.productName,
+        price: product.price,
+        quantity: product.quantity,
+        description: product.description,
+        inventoryCategory: product.inventoryCategory,
+        productCategory: product.productCategory,
+        isCombo: product.isCombo,
+        rawProductFlag: product.rawProductFlag,
+        isDuplicate: product.isDuplicate,
+        rootProductId: product.rootProductId,
+        comboReference: product.comboReference,
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+        todayDateTime: new Date(),
+        // other counters default to 0
       },
     });
   }
 
   console.log(`✅ Synced fulfilled (yesterday) for shop ${shop}, updated ${allProductIds.size} products`);
-}
-
-// Helper to get product fields for snapshot creation
-async function getProductFields(productId) {
-  const product = await prisma.product.findUnique({ where: { productId } });
-  if (!product) throw new Error(`Product not found: ${productId}`);
-  return {
-    productName: product.productName,
-    price: product.price,
-    quantity: product.quantity,
-    description: product.description,
-    inventoryCategory: product.inventoryCategory,
-    productCategory: product.productCategory,
-    isCombo: product.isCombo,
-    rawProductFlag: product.rawProductFlag,
-    isDuplicate: product.isDuplicate,
-    rootProductId: product.rootProductId,
-    comboReference: product.comboReference,
-    createdAt: product.createdAt,
-    updatedAt: product.updatedAt,
-    todayDateTime: new Date(),
-  };
 }
 
 /**
@@ -622,6 +648,16 @@ function computeEffectiveRange(requestedFrom, requestedTo, existingRange) {
       effectiveTo: null,
       newFromForRange: null,
       newToForRange: null,
+    };
+  }
+
+  // If the requested window is both outside the already-processed window 
+  if (requestedFrom <= dbFrom && requestedTo >= dbTo) {
+    return {
+      effectiveFrom: requestedFrom,
+      effectiveTo: requestedTo,
+      newFromForRange: requestedFrom,
+      newToForRange: requestedTo,
     };
   }
 
