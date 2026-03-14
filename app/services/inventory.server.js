@@ -497,12 +497,16 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
   const toStr = toDate.toISOString();
   const queryString = `cancelled_at:>=${fromStr} cancelled_at:<=${toStr}`;
 
-  console.log('Fetching cancelled orders with query:', queryString);
+  console.log('==== updateCancelledOrders ====');
+  console.log('Shop:', shop);
+  console.log('fromDate:', fromDate.toISOString());
+  console.log('toDate:  ', toDate.toISOString());
+  console.log('GraphQL queryString:', queryString);
 
   // 2. Fetch all matching orders via pagination
   let hasNextPage = true;
   let cursor = null;
-  const allOrders = [];
+  const allFetched = [];
 
   while (hasNextPage) {
     const response = await admin.graphql(GET_CANCELLED, {
@@ -514,50 +518,77 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
       throw new Error('GraphQL error: ' + JSON.stringify(errors));
     }
 
-    const edges = data?.orders?.edges || [];
+    const edges = (data && data.orders && data.orders.edges) || [];
     const nodes = edges.map(e => e.node);
 
-    // Extra safety: only keep orders that actually have cancelledAt
-    const cancelledNodes = nodes.filter(n => n.cancelledAt);
+    console.log(`Page: got ${nodes.length} nodes`);
+    nodes.forEach(n => {
+      console.log(
+        `[RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt}`
+      );
+    });
 
-    allOrders.push(...cancelledNodes);
+    allFetched.push(...nodes);
 
-    hasNextPage = data?.orders?.pageInfo?.hasNextPage || false;
+    hasNextPage =
+      (data &&
+        data.orders &&
+        data.orders.pageInfo &&
+        data.orders.pageInfo.hasNextPage) ||
+      false;
     cursor = edges.length ? edges[edges.length - 1].cursor : null;
   }
 
-  // 🚩 This is the part you asked for: log *actual* order time range & names
-  if (allOrders.length > 0) {
-    // Sort a copy of the array by createdAt ascending
-    const byCreatedAt = [...allOrders].sort((a, b) => {
+  // 3. Apply explicit in-code filter by cancelledAt to be 100% sure
+  const start = fromDate.getTime();
+  const end = toDate.getTime();
+
+  const inRange = allFetched.filter(n => {
+    if (!n.cancelledAt) return false;
+    const c = new Date(n.cancelledAt).getTime();
+    return c >= start && c <= end;
+  });
+
+  console.log(
+    `Total fetched from Shopify (ignoring null cancelledAt): ${
+      allFetched.filter(n => n.cancelledAt).length
+    }`
+  );
+  console.log(
+    `Total after in-code cancelledAt filter [${fromStr} .. ${toStr}]: ${
+      inRange.length
+    }`
+  );
+
+  if (inRange.length > 0) {
+    const byCreatedAt = [...inRange].sort((a, b) => {
       if (a.createdAt < b.createdAt) return -1;
       if (a.createdAt > b.createdAt) return 1;
       return 0;
     });
+    const byCancelledAt = [...inRange].sort((a, b) => {
+      if (a.cancelledAt < b.cancelledAt) return -1;
+      if (a.cancelledAt > b.cancelledAt) return 1;
+      return 0;
+    });
 
-    const firstOrder = byCreatedAt[0];
-    const lastOrder = byCreatedAt[byCreatedAt.length - 1];
+    const firstCreated = byCreatedAt[0];
+    const lastCreated = byCreatedAt[byCreatedAt.length - 1];
+
+    const firstCancelled = byCancelledAt[0];
+    const lastCancelled = byCancelledAt[byCancelledAt.length - 1];
 
     console.log(
-      `Fetched ${allOrders.length} cancelled orders for shop ${shop}.`
+      `  CreatedAt range of inRange: first ${firstCreated.name} at ${firstCreated.createdAt} | last ${lastCreated.name} at ${lastCreated.createdAt}`
     );
     console.log(
-      `  First by createdAt:  ${firstOrder.name} at ${firstOrder.createdAt}`
-    );
-    console.log(
-      `  Last by createdAt:   ${lastOrder.name} at ${lastOrder.createdAt}`
+      `  CancelledAt range of inRange: first ${firstCancelled.name} at ${firstCancelled.cancelledAt} | last ${lastCancelled.name} at ${lastCancelled.cancelledAt}`
     );
   } else {
-    console.log(
-      `No cancelled orders fetched for shop ${shop} (query: ${queryString})`
-    );
+    console.log('  No orders remain after in-code cancelledAt filter');
   }
 
-  // If you *also* care about cancelledAt range, you can add:
-  // const byCancelledAt = [...allOrders].sort((a, b) => (a.cancelledAt < b.cancelledAt ? -1 : a.cancelledAt > b.cancelledAt ? 1 : 0));
-  // and then log byCancelledAt[0] / byCancelledAt[byCancelledAt.length - 1].
-
-  // 3. Delete existing cancelled orders for this shop & date range
+  // 4. Replace table contents only with the filtered list (inRange)
   await prisma.cancelledOrder.deleteMany({
     where: {
       shop,
@@ -568,20 +599,12 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
     },
   });
 
-  // 4. Insert new cancelled orders
-  for (const node of allOrders) {
-    // Absolute guard to avoid Prisma error if anything slips through
-    if (!node.cancelledAt) {
-      console.warn('Skipping non-cancelled order in updateCancelledOrders:', {
-        id: node.id,
-        name: node.name,
-        createdAt: node.createdAt,
-      });
-      continue;
-    }
-
-    const productIds = (node.lineItems?.edges || []).map(item => ({
-      productId: item.node.product?.id,
+  for (const node of inRange) {
+    const productIds = (node.lineItems && node.lineItems.edges
+      ? node.lineItems.edges
+      : []
+    ).map(item => ({
+      productId: item.node.product && item.node.product.id,
       quantity: item.node.quantity,
       title: item.node.title,
     }));
@@ -596,20 +619,36 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
         cancelledAt: node.cancelledAt,
         fromDateTime: fromDate,
         toDateTime: toDate,
-        customerId: node.customer?.id,
-        firstName: node.customer?.firstName,
-        lastName: node.customer?.lastName,
-        contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber,
-        shippingPhone: node.shippingAddress?.phone,
+        customerId: node.customer && node.customer.id,
+        firstName: node.customer && node.customer.firstName,
+        lastName: node.customer && node.customer.lastName,
+        contactPhone:
+          node.customer &&
+          node.customer.defaultPhoneNumber &&
+          node.customer.defaultPhoneNumber.phoneNumber,
+        shippingPhone:
+          node.shippingAddress && node.shippingAddress.phone,
         shippingAddress: node.shippingAddress
           ? JSON.stringify(node.shippingAddress)
           : null,
-        totalPrice: node.totalPriceSet?.shopMoney?.amount ?? '0',
+        totalPrice:
+          (node.totalPriceSet &&
+            node.totalPriceSet.shopMoney &&
+            node.totalPriceSet.shopMoney.amount) ||
+          '0',
         shippingFee:
-          node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney
-            ?.amount ?? '0',
+          (node.shippingLines &&
+            node.shippingLines.edges &&
+            node.shippingLines.edges[0] &&
+            node.shippingLines.edges[0].node &&
+            node.shippingLines.edges[0].node.originalPriceSet &&
+            node.shippingLines.edges[0].node.originalPriceSet.shopMoney &&
+            node.shippingLines.edges[0].node.originalPriceSet.shopMoney
+              .amount) ||
+          '0',
         products: JSON.stringify(
-          node.lineItems?.edges.map(i => ({
+          (node.lineItems && node.lineItems.edges ? node.lineItems.edges : []
+          ).map(i => ({
             title: i.node.title,
             quantity: i.node.quantity,
           }))
@@ -620,7 +659,28 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
     });
   }
 
-  return allOrders;
+  return inRange;
+}
+
+async function getProductFields(productId) {
+  const product = await prisma.product.findUnique({ where: { productId } });
+  if (!product) throw new Error(`Product not found: ${productId}`);
+  return {
+    productName: product.productName,
+    price: product.price,
+    quantity: product.quantity,
+    description: product.description,
+    inventoryCategory: product.inventoryCategory,
+    productCategory: product.productCategory,
+    isCombo: product.isCombo,
+    rawProductFlag: product.rawProductFlag,
+    isDuplicate: product.isDuplicate,
+    rootProductId: product.rootProductId,
+    comboReference: product.comboReference,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
+    todayDateTime: new Date(),
+  };
 }
 
 /**
