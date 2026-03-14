@@ -1,7 +1,6 @@
 // app/routes/webhooks.orders.create.jsx
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-// import { orderQueue, ORDER_QUEUE_NAME } from "../queues/orderQueue.server";
 
 export const action = async ({ request }) => {
   try {
@@ -16,6 +15,10 @@ export const action = async ({ request }) => {
 
     const orderId = payload.id.toString();
     const orderTime = new Date(payload.created_at);
+    const updatedAt = payload.updated_at ? new Date(payload.updated_at) : null;
+    const cancelledAt = payload.cancelled_at ? new Date(payload.cancelled_at) : null;
+    const fulfilledAt = payload.fulfilled_at ? new Date(payload.fulfilled_at) : null;
+    const fulfillmentStatus = payload.fulfillment_status || null; // might be "fulfilled", "partial", etc.
 
     // Customer details
     const customerId = payload.customer?.id?.toString() || null;
@@ -42,8 +45,9 @@ export const action = async ({ request }) => {
         .toString();
     }
 
-    // Products
-    const products = (payload.line_items || []).map((item) => ({
+    // Products and productIds
+    const lineItems = payload.line_items || [];
+    const products = lineItems.map((item) => ({
       id: item.id,
       title: item.title,
       quantity: item.quantity,
@@ -53,12 +57,24 @@ export const action = async ({ request }) => {
       sku: item.sku,
     }));
 
-    // Build order data
+    // Build productIds array (for efficient querying)
+    const productIds = lineItems.map((item) => ({
+      productId: item.product_id?.toString() || null,
+      variantId: item.variant_id?.toString() || null,
+      title: item.title,
+      quantity: item.quantity,
+    }));
+
+    // Build order data including all fields
     const orderData = {
       orderId,
       orderName: payload.name,
       shop,
       orderTime,
+      updatedAt,
+      cancelledAt,
+      fulfilledAt,
+      fulfillmentStatus,
       customerId,
       firstName,
       lastName,
@@ -68,14 +84,40 @@ export const action = async ({ request }) => {
       totalPrice,
       shippingFee,
       products,
+      productIds: productIds.length ? JSON.stringify(productIds) : null,
+      source: payload.source_name || null,
+      // Enrichment fields start as null
+      fraudReport: null,
+      steadFastReport: null,
+      realName1: null,
+      realName2: null,
     };
 
-    // Upsert basic order data immediately
-    const { fraudReport, steadFastReport, realName1, realName2, ...orderWithoutReports } = orderData;
+    // Upsert order data
     await prisma.order.upsert({
       where: { orderName: orderData.orderName },
       create: orderData,
-      update: orderWithoutReports, // don't overwrite enrichment fields
+      update: {
+        // Update all fields except enrichment ones (they should be preserved)
+        orderId: orderData.orderId,
+        orderTime: orderData.orderTime,
+        updatedAt: orderData.updatedAt,
+        cancelledAt: orderData.cancelledAt,
+        fulfilledAt: orderData.fulfilledAt,
+        fulfillmentStatus: orderData.fulfillmentStatus,
+        customerId: orderData.customerId,
+        firstName: orderData.firstName,
+        lastName: orderData.lastName,
+        contactPhone: orderData.contactPhone,
+        shippingPhone: orderData.shippingPhone,
+        shippingAddress: orderData.shippingAddress,
+        totalPrice: orderData.totalPrice,
+        shippingFee: orderData.shippingFee,
+        products: orderData.products,
+        productIds: orderData.productIds,
+        source: orderData.source,
+        // Do not update fraudReport, steadFastReport, realName1, realName2
+      },
     });
 
     // Fetch the shop's current settings
@@ -109,7 +151,6 @@ export const action = async ({ request }) => {
       });
     } catch (queueError) {
       console.error("Failed to enqueue sheet job for web hook:", queueError);
-      // Still return 200 to Shopify – the order is already saved
     }
 
     console.log(`✅ Order #${payload.order_number} saved and enqueued for enrichment`);

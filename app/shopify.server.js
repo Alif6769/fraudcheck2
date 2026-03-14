@@ -133,6 +133,8 @@ export async function syncOrders(
               name
               sourceName
               createdAt
+              updatedAt          // new field
+              cancelledAt        // new field
               totalPriceSet { shopMoney { amount } }
               customer {
                 id
@@ -175,6 +177,8 @@ export async function syncOrders(
       orderId: node.id,
       orderName: node.name,
       orderTime: node.createdAt,
+      updatedAt: node.updatedAt || null,       // new
+      cancelledAt: node.cancelledAt || null,   // new
       source: node.sourceName || null,
       customerId: node.customer?.id || null,
       firstName: node.customer?.firstName || null,

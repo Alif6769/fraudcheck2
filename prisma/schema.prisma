@@ -39,6 +39,8 @@ model Order {
   orderName       String   @unique
   shop            String
   orderTime       DateTime
+  updatedAt       String?
+  cancelledAt     String?
   fulfilledAt     DateTime? // when the order was marked fulfilled
   fulfillmentStatus String? // e.g., "fulfilled", "partial", "unfulfilled"
   customerId      String?
@@ -57,6 +59,87 @@ model Order {
   steadFastReport String?
   realName1       String?
   realName2       String?
+}
+
+model UnfulfilledOrder {
+  id              Int      @id @default(autoincrement())
+  orderId         String
+  orderName       String   @unique
+  shop            String
+  orderTime       DateTime
+  updatedAt       String?
+  cancelledAt     String?
+  fulfilledAt     DateTime? // when the order was marked fulfilled
+  fulfillmentStatus String? // e.g., "fulfilled", "partial", "unfulfilled"
+  customerId      String?
+  firstName       String?
+  lastName        String?
+  contactPhone    String?
+  shippingPhone   String?
+  shippingAddress String?
+  totalPrice      String
+  shippingFee     String
+  products        Json
+  // new fields
+  productIds        Json?
+  source          String? // e.g., "web", "pos", etc.
+}
+
+model CancelledOrder {
+  id              Int      @id @default(autoincrement())
+  orderId         String
+  orderName       String   @unique
+  shop            String
+  orderTime       DateTime
+  updatedAt       String?
+  cancelledAt     String
+  fromDateTime    DateTime
+  toDateTime      DateTime
+  customerId      String?
+  firstName       String?
+  lastName        String?
+  contactPhone    String?
+  shippingPhone   String?
+  shippingAddress String?
+  totalPrice      String
+  shippingFee     String
+  products        Json
+  // new fields
+  productIds        Json?
+  source          String? // e.g., "web", "pos", etc.
+}
+
+// Product table
+model DailyInventorySnapshot {
+  id               String               @id @default(cuid())
+  productId        String               @unique
+  productName      String
+  price            Float?
+  quantity         Int                  @default(0)  // current stock
+  shop            String
+  description      String?
+  inventoryCategory String?
+  productCategory   String?
+  isCombo          Boolean              @default(false)
+  rawProductFlag   Boolean              @default(false)
+  isDuplicate      Boolean  @default(false)
+  rootProductId    String?                        // for duplicate products
+  comboReference   Json?                          // for combo products
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  todayDateTime    DateTime?
+  fulfilledSales   Int      @default(0) // total fulfilled sales from that day's transactions (SALE)
+  fulfilledManual  Int      @default(0) // MANUAL_SALE
+  fulfilledReturn  Int      @default(0) // RETURN
+  fulfilledDamage  Int      @default(0) // DAMAGE
+  unfulfilledSales   Int      @default(0) // total fulfilled sales from that day's transactions (SALE)
+  unfulfilledManual  Int      @default(0) // MANUAL_SALE
+  unfulfilledReturn  Int      @default(0) // RETURN
+  unfulfilledDamage  Int      @default(0) // DAMAGE
+  cancelledSales   Int      @default(0) // total fulfilled sales from that day's transactions (SALE)
+  cancelledManual  Int      @default(0) // MANUAL_SALE
+  cancelledReturn  Int      @default(0) // RETURN
+  cancelledDamage  Int      @default(0) // DAMAGE
 }
 
 model ProcessedOrderRange {
