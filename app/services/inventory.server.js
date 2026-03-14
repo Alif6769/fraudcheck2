@@ -492,10 +492,10 @@ const GET_CANCELLED = `
  * @returns {Promise<Array>} - array of *cancelled* order nodes
  */
 export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
-  // 1. Build Shopify cancelled_at query
+  // 1. Build Shopify query: only filter by status, not by time
   const fromStr = fromDate.toISOString();
   const toStr = toDate.toISOString();
-  const queryString = `cancelled_at:>=${fromStr} cancelled_at:<=${toStr}`;
+  const queryString = `status:cancelled`;
 
   console.log('==== updateCancelledOrders ====');
   console.log('Shop:', shop);
@@ -503,7 +503,7 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
   console.log('toDate:  ', toDate.toISOString());
   console.log('GraphQL queryString:', queryString);
 
-  // 2. Fetch all matching orders via pagination
+  // 2. Fetch cancelled orders via pagination (by status)
   let hasNextPage = true;
   let cursor = null;
   const allFetched = [];
@@ -539,7 +539,7 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
     cursor = edges.length ? edges[edges.length - 1].cursor : null;
   }
 
-  // 3. Apply explicit in-code filter by cancelledAt to be 100% sure
+  // 3. Apply explicit in-code filter by cancelledAt
   const start = fromDate.getTime();
   const end = toDate.getTime();
 
@@ -561,16 +561,16 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
   );
 
   if (inRange.length > 0) {
-    const byCreatedAt = [...inRange].sort((a, b) => {
-      if (a.createdAt < b.createdAt) return -1;
-      if (a.createdAt > b.createdAt) return 1;
-      return 0;
-    });
-    const byCancelledAt = [...inRange].sort((a, b) => {
-      if (a.cancelledAt < b.cancelledAt) return -1;
-      if (a.cancelledAt > b.cancelledAt) return 1;
-      return 0;
-    });
+    const byCreatedAt = [...inRange].sort((a, b) =>
+      a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0
+    );
+    const byCancelledAt = [...inRange].sort((a, b) =>
+      a.cancelledAt < b.cancelledAt
+        ? -1
+        : a.cancelledAt > b.cancelledAt
+        ? 1
+        : 0
+    );
 
     const firstCreated = byCreatedAt[0];
     const lastCreated = byCreatedAt[byCreatedAt.length - 1];
