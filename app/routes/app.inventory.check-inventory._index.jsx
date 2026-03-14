@@ -1,4 +1,3 @@
-// app/routes/app.inventory.check-inventory.jsx
 import { useFetcher, useLoaderData } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
@@ -7,6 +6,15 @@ import {
   syncFulfilledOrdersForRange,
   processFulfilledOrdersWithRange,
 } from "../services/inventory.server";
+
+// Helper to get today's date in YYYY-MM-DD format
+function getTodayDate() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // Loader to fetch products (raw or combo)
 export async function loader() {
@@ -23,97 +31,92 @@ function parseLocalToUTC(dateTimeStr, offsetMinutes) {
   const [datePart, timePart] = dateTimeStr.split('T');
   const [year, month, day] = datePart.split('-').map(Number);
   const [hour, minute] = timePart.split(':').map(Number);
-  // Create a UTC date from the local components
   const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  // Adjust by the offset (local = UTC - offset, so UTC = local + offset)
   utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
   return utcDate;
 }
 
 // Action: sync + process orders for the given date range
 export async function action({ request }) {
-  const { session, admin } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = formData.get("intent") || "process-orders";
-  const from = formData.get("from");
-  const to = formData.get("to");
-  const tzOffset = parseInt(formData.get("tzOffset") || "0");
+  try {
+    const { session, admin } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const intent = formData.get("intent") || "process-orders";
+    const from = formData.get("from");
+    const to = formData.get("to");
+    const tzOffset = parseInt(formData.get("tzOffset") || "0");
 
-  console.log("DEBUG action formData:", { from, to });
+    console.log("DEBUG action formData:", { from, to, intent });
 
-  if (!from || !to) {
-    console.log("DEBUG action: missing from/to, returning 400");
-    return new Response("Missing date range", { status: 400 });
-  }
-
-  const requestedFrom = parseLocalToUTC(from, tzOffset);
-  const requestedTo = parseLocalToUTC(to, tzOffset);
-
-  if (intent === "product-search") {
-    const productId = formData.get("productId");
-    if (!productId) {
-      return new Response("Missing productId", { status: 400 });
+    if (!from || !to) {
+      return new Response("Missing date range", { status: 400 });
     }
 
-    // Get product name from database
-    const product = await prisma.product.findUnique({
-      where: { productId },
-      select: { productName: true },
-    });
+    const requestedFrom = parseLocalToUTC(from, tzOffset);
+    const requestedTo = parseLocalToUTC(to, tzOffset);
 
-    if (!product) {
-      return new Response("Product not found", { status: 404 });
-    }
+    if (intent === "product-search") {
+      const productId = formData.get("productId");
+      if (!productId) {
+        return new Response("Missing productId", { status: 400 });
+      }
 
-    // Query transactions for this product in the date range
-    const transactions = await prisma.productTransaction.groupBy({
-      by: ['type'],
-      where: {
-        productId,
-        timestamp: {
-          gte: requestedFrom,
-          lte: requestedTo,
+      const product = await prisma.product.findUnique({
+        where: { productId },
+        select: { productName: true },
+      });
+
+      if (!product) {
+        return new Response("Product not found", { status: 404 });
+      }
+
+      const transactions = await prisma.productTransaction.groupBy({
+        by: ['type'],
+        where: {
+          productId,
+          timestamp: {
+            gte: requestedFrom,
+            lte: requestedTo,
+          },
         },
-      },
-      _sum: {
-        quantity: true,
-      },
+        _sum: { quantity: true },
+      });
+
+      const totals = { SALE: 0, RETURN: 0, DAMAGE: 0, MANUAL_SALE: 0 };
+      transactions.forEach((t) => {
+        totals[t.type] = t._sum.quantity || 0;
+      });
+
+      return {
+        success: true,
+        productId,
+        productName: product.productName,
+        totals,
+        from,
+        to,
+      };
+    }
+
+    console.log("DEBUG action parsed dates:", {
+      requestedFrom: requestedFrom.toISOString(),
+      requestedTo: requestedTo.toISOString(),
     });
 
-    // Build totals object with default 0 for each type
-    const totals = {
-      SALE: 0,
-      RETURN: 0,
-      DAMAGE: 0,
-      MANUAL_SALE: 0,
-    };
-    transactions.forEach((t) => {
-      totals[t.type] = t._sum.quantity || 0;
-    });
+    await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
+    const result = await processFulfilledOrdersWithRange(
+      requestedFrom,
+      requestedTo,
+      session.shop
+    );
 
-    return {
-      success: true,
-      productId,
-      productName: product.productName,
-      totals,
-      from,
-      to,
-    };
+    return { success: true, ...result };
+  } catch (error) {
+    console.error("❌ Action error:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
-
-  console.log("DEBUG action parsed dates:", {
-    requestedFrom: requestedFrom.toISOString(),
-    requestedTo: requestedTo.toISOString(),
-  });
-
-  await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
-  const result = await processFulfilledOrdersWithRange(
-    requestedFrom,
-    requestedTo,
-    session.shop
-  );
-
-  return { success: true, ...result };
 }
 
 export default function CheckInventory() {
@@ -121,16 +124,18 @@ export default function CheckInventory() {
   const fetcher = useFetcher();
   const productFetcher = useFetcher();
 
-  // Global date range state
-  const [fromDate, setFromDate] = useState("");
+  const today = getTodayDate();
+
+  // Global date range state with default to today
+  const [fromDate, setFromDate] = useState(today);
   const [fromTime, setFromTime] = useState("00:00");
-  const [toDate, setToDate] = useState("");
+  const [toDate, setToDate] = useState(today);
   const [toTime, setToTime] = useState("23:59");
 
   // Per‑product rows
   const [productRows, setProductRows] = useState(
     products.map((product) => ({
-      productId: product.productId,   // ✅ use Shopify product ID
+      productId: product.productId,
       name: product.productName,
       fromDate: "",
       fromTime: "",
@@ -152,7 +157,6 @@ export default function CheckInventory() {
     const formData = new FormData();
     formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     formData.set("to", `${toDate}T${toTime || "23:59"}`);
-    // Get client's timezone offset in minutes (e.g., -360 for UTC+6)
     const tzOffset = new Date().getTimezoneOffset();
     formData.set("tzOffset", tzOffset);
     fetcher.submit(formData, { method: "post" });
@@ -161,8 +165,6 @@ export default function CheckInventory() {
       from: `${fromDate}T${fromTime || "00:00"}`,
       to: `${toDate}T${toTime || "23:59"}`,
     });
-
-    fetcher.submit(formData, { method: "post" });
   };
 
   const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
@@ -174,7 +176,7 @@ export default function CheckInventory() {
     }
     const formData = new FormData();
     formData.set("intent", "product-search");
-    formData.set("productId", productId); // ✅ now uses the correct ID
+    formData.set("productId", productId);
     formData.set("from", fromStr);
     formData.set("to", toStr);
     formData.set("tzOffset", new Date().getTimezoneOffset());
@@ -212,15 +214,6 @@ export default function CheckInventory() {
           <s-stack gap="small">
             <s-heading>Overall date range</s-heading>
 
-            {/* DEBUG: show raw state values */}
-            <s-banner tone="info">
-              <s-text type="strong">DEBUG current state:</s-text>
-              <s-text>fromDate: "{fromDate}"</s-text>
-              <s-text>fromTime: "{fromTime}"</s-text>
-              <s-text>toDate: "{toDate}"</s-text>
-              <s-text>toTime: "{toTime}"</s-text>
-            </s-banner>
-
             <s-stack direction="inline" gap="small" alignItems="center">
               {/* From */}
               <s-stack gap="small">
@@ -229,18 +222,12 @@ export default function CheckInventory() {
                   <s-date-field
                     label="Date"
                     value={fromDate}
-                    // CHANGE: use onChange instead of onInput
                     onChange={(event) => {
-                      console.log("DEBUG fromDate onChange event:", event);
-                      // Try the most likely places first
                       const value =
-                        // If it's a web component custom event
                         event.detail?.value ??
-                        // If React maps to a normal input event
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG fromDate extracted value:", value);
                       setFromDate(value);
                     }}
                   />
@@ -249,12 +236,10 @@ export default function CheckInventory() {
                     placeholder="00:00"
                     value={fromTime}
                     onChange={(event) => {
-                      console.log("DEBUG fromTime onChange event:", event);
                       const value =
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG fromTime extracted value:", value);
                       setFromTime(value);
                     }}
                   />
@@ -269,13 +254,11 @@ export default function CheckInventory() {
                     label="Date"
                     value={toDate}
                     onChange={(event) => {
-                      console.log("DEBUG toDate onChange event:", event);
                       const value =
                         event.detail?.value ??
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG toDate extracted value:", value);
                       setToDate(value);
                     }}
                   />
@@ -284,12 +267,10 @@ export default function CheckInventory() {
                     placeholder="23:59"
                     value={toTime}
                     onChange={(event) => {
-                      console.log("DEBUG toTime onChange event:", event);
                       const value =
                         event.target?.value ??
                         event.currentTarget?.value ??
                         "";
-                      console.log("DEBUG toTime extracted value:", value);
                       setToTime(value);
                     }}
                   />
@@ -354,10 +335,10 @@ export default function CheckInventory() {
             </s-banner>
           )}
 
-          {/* Per‑product table (unchanged except debug logging) */}
+          {/* Per‑product table */}
           <s-section padding="base">
             <s-stack gap="small">
-              <s-heading>Per‑product ranges (DEBUG logs on change)</s-heading>
+              <s-heading>Per‑product ranges</s-heading>
 
               <s-stack direction="inline" gap="small" alignItems="center">
                 <s-search-field
@@ -394,11 +375,6 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            console.log("DEBUG row.fromDate onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
                             handleProductFieldChange(row.productId, "fromDate", value);
                           }}
                         />
@@ -414,11 +390,6 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            console.log("DEBUG row.fromTime onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
                             handleProductFieldChange(row.productId, "fromTime", value);
                           }}
                         />
@@ -434,11 +405,6 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            console.log("DEBUG row.toDate onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
                             handleProductFieldChange(row.productId, "toDate", value);
                           }}
                         />
@@ -454,11 +420,6 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            console.log("DEBUG row.toTime onInput:", {
-                              productId: row.productId,
-                              rawEvent: event,
-                              extractedValue: value,
-                            });
                             handleProductFieldChange(row.productId, "toTime", value);
                           }}
                         />
