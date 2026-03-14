@@ -138,9 +138,9 @@ export async function action({ request }) {
     // Step 1: Initialize snapshot (raw/combo products)
     await initializeDailySnapshot(shop);
     
-    today = getTodayLocalRange()
+    // const today = getTodayLocalRange()
 
-    await processFulfilledOrdersWithRange(fromDate, toDate, shop)
+    await processFulfilledOrdersWithRange(cancelledFrom, cancelledTo, shop)
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
