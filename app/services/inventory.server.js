@@ -116,6 +116,7 @@ export async function initializeDailySnapshot(shop) {
       },
       create: {
         productId: product.productId,
+        shop: shop,
         productName: product.productName,
         price: product.price,
         quantity: product.quantity,
