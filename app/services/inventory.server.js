@@ -196,12 +196,18 @@ const GET_UNFULFILLED = `
  * Fetches unfulfilled orders from Shopify and replaces the UnfulfilledOrder
  * table for this shop.
  *
+ * Keeps only orders where:
+ *   - displayFulfillmentStatus === 'UNFULFILLED'
+ *   - cancelledAt == null
+ *
  * @param {string} shop - The shop domain.
  * @param {object} admin - Shopify Admin GraphQL client.
- * @returns {Promise<Array>} - Array of unfulfilled order nodes.
+ * @returns {Promise<Array>} - Array of unfulfilled (not cancelled) order nodes.
  */
 export async function updateUnfulfilledOrders(shop, admin) {
   // 1. Build Shopify query for unfulfilled and not cancelled
+  // NOTE: We still use this, but we ALSO filter in code because
+  // Shopify is clearly returning some cancelled orders.
   const queryString = 'fulfillment_status:unfulfilled AND NOT cancelled_at:*';
 
   console.log('==== updateUnfulfilledOrders ====');
@@ -211,7 +217,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
   // 2. Fetch all matching orders via pagination
   let hasNextPage = true;
   let cursor = null;
-  const allOrders = [];
+  const allFetched = [];
 
   while (hasNextPage) {
     const response = await admin.graphql(GET_UNFULFILLED, {
@@ -224,20 +230,19 @@ export async function updateUnfulfilledOrders(shop, admin) {
     }
 
     const edges =
-      (data && data.orders && data.orders.edges)
+      data && data.orders && data.orders.edges
         ? data.orders.edges
         : [];
     const nodes = edges.map(e => e.node);
 
-    console.log(`Page: got ${nodes.length} unfulfilled nodes`);
-    // Optional: per-order debug, comment out later if too noisy
-    nodes.forEach(n => {
-      console.log(
-        `[UNFULFILLED RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt} | fulfillmentStatus=${n.displayFulfillmentStatus}`
-      );
-    });
+    // console.log(`Page: got ${nodes.length} unfulfilled nodes`);
+    // nodes.forEach(n => {
+    //   console.log(
+    //     `[UNFULFILLED RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt} | fulfillmentStatus=${n.displayFulfillmentStatus}`
+    //   );
+    // });
 
-    allOrders.push(...nodes);
+    allFetched.push(...nodes);
 
     hasNextPage =
       data &&
@@ -249,9 +254,23 @@ export async function updateUnfulfilledOrders(shop, admin) {
     cursor = edges.length ? edges[edges.length - 1].cursor : null;
   }
 
-  // 3. Log summary: count and createdAt range
-  if (allOrders.length > 0) {
-    const byCreatedAt = [...allOrders].sort((a, b) => {
+  // 3. In-code filter: only keep truly unfulfilled AND not cancelled
+  const filtered = allFetched.filter(n => {
+    const notCancelled = !n.cancelledAt; // null or undefined
+    const isUnfulfilled = n.displayFulfillmentStatus === 'UNFULFILLED';
+    return notCancelled && isUnfulfilled;
+  });
+
+  console.log(
+    `Total fetched from Shopify: ${allFetched.length}`
+  );
+  console.log(
+    `Total after in-code filter (UNFULFILLED + cancelledAt == null): ${filtered.length}`
+  );
+
+  // 4. Log summary: count and createdAt range for filtered orders
+  if (filtered.length > 0) {
+    const byCreatedAt = [...filtered].sort((a, b) => {
       if (a.createdAt < b.createdAt) return -1;
       if (a.createdAt > b.createdAt) return 1;
       return 0;
@@ -261,24 +280,24 @@ export async function updateUnfulfilledOrders(shop, admin) {
     const lastOrder = byCreatedAt[byCreatedAt.length - 1];
 
     console.log(
-      `Fetched ${allOrders.length} unfulfilled orders for shop ${shop}.`
+      `Filtered unfulfilled orders for shop ${shop}:`
     );
     console.log(
-      `  CreatedAt range: first ${firstOrder.orderName} at ${firstOrder.createdAt} | last ${lastOrder.orderName} at ${lastOrder.createdAt}`
+      `  CreatedAt range: first ${firstOrder.name} at ${firstOrder.createdAt} | last ${lastOrder.name} at ${lastOrder.createdAt}`
     );
   } else {
     console.log(
-      `No unfulfilled orders fetched for shop ${shop} (query: ${queryString})`
+      `No unfulfilled (not-cancelled) orders remain after filter for shop ${shop}`
     );
   }
 
-  // 4. Delete all existing UnfulfilledOrder records for this shop
+  // 5. Delete all existing UnfulfilledOrder records for this shop
   await prisma.unfulfilledOrder.deleteMany({
     where: { shop },
   });
 
-  // 5. Insert each order into UnfulfilledOrder
-  for (const node of allOrders) {
+  // 6. Insert each filtered order into UnfulfilledOrder
+  for (const node of filtered) {
     const productIds = (node.lineItems && node.lineItems.edges
       ? node.lineItems.edges
       : []
@@ -295,7 +314,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
         shop,
         orderTime: new Date(node.createdAt),
         updatedAt: node.updatedAt,
-        cancelledAt: node.cancelledAt,
+        cancelledAt: node.cancelledAt, // will be null here, but fine if Prisma field is nullable
         fulfillmentStatus: node.displayFulfillmentStatus,
         customerId: node.customer && node.customer.id,
         firstName: node.customer && node.customer.firstName,
@@ -339,7 +358,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
     });
   }
 
-  return allOrders;
+  return filtered;
 }
 
 /**
