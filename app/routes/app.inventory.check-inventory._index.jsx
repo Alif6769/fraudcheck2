@@ -11,29 +11,43 @@ import {
 function getTodayDate() {
   const d = new Date();
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-// Loader to fetch products (raw or combo)
-export async function loader() {
+// Convert a local "YYYY-MM-DDTHH:MM" string + tz offset (in minutes)
+// into a UTC Date object.
+function parseLocalToUTC(dateTimeStr, offsetMinutes) {
+  const [datePart, timePart] = dateTimeStr.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  // offsetMinutes is from JS getTimezoneOffset() (minutes behind UTC),
+  // so we add it to convert local -> UTC.
+  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
+  return utcDate;
+}
+
+// Loader: fetch products AND last processed range for this shop
+export async function loader({ request }) {
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+
   const products = await prisma.product.findMany({
     where: {
       OR: [{ rawProductFlag: true }, { isCombo: true }],
     },
     orderBy: { productName: "asc" },
   });
-  return { products };
-}
 
-function parseLocalToUTC(dateTimeStr, offsetMinutes) {
-  const [datePart, timePart] = dateTimeStr.split('T');
-  const [year, month, day] = datePart.split('-').map(Number);
-  const [hour, minute] = timePart.split(':').map(Number);
-  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
-  return utcDate;
+  // Get the most recent processed range for this shop
+  const processedRange = await prisma.processedOrderRange.findFirst({
+    where: { shop },
+    orderBy: { toDateTime: "desc" }, // latest run
+  });
+
+  return { products, processedRange };
 }
 
 // Action: sync + process orders for the given date range
@@ -44,9 +58,7 @@ export async function action({ request }) {
     const intent = formData.get("intent") || "process-orders";
     const from = formData.get("from");
     const to = formData.get("to");
-    const tzOffset = parseInt(formData.get("tzOffset") || "0");
-
-    console.log("DEBUG action formData:", { from, to, intent });
+    const tzOffset = parseInt(formData.get("tzOffset") || "0", 10);
 
     if (!from || !to) {
       return new Response("Missing date range", { status: 400 });
@@ -71,7 +83,7 @@ export async function action({ request }) {
       }
 
       const transactions = await prisma.productTransaction.groupBy({
-        by: ['type'],
+        by: ["type"],
         where: {
           productId,
           timestamp: {
@@ -97,17 +109,17 @@ export async function action({ request }) {
       };
     }
 
-    console.log("DEBUG action parsed dates:", {
-      requestedFrom: requestedFrom.toISOString(),
-      requestedTo: requestedTo.toISOString(),
-    });
-
+    // Process fulfilled orders over range
     await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
+
     const result = await processFulfilledOrdersWithRange(
       requestedFrom,
       requestedTo,
       session.shop
     );
+
+    // Optionally: if processFulfilledOrdersWithRange is not already writing
+    // ProcessedOrderRange, you could upsert it here. Assuming it does already.
 
     return { success: true, ...result };
   } catch (error) {
@@ -120,7 +132,7 @@ export async function action({ request }) {
 }
 
 export default function CheckInventory() {
-  const { products } = useLoaderData();
+  const { products, processedRange } = useLoaderData();
   const fetcher = useFetcher();
   const productFetcher = useFetcher();
 
@@ -147,29 +159,27 @@ export default function CheckInventory() {
   const isSubmitting = fetcher.state === "submitting";
 
   const handleProcessAll = () => {
-    console.log("DEBUG handleProcessAll state (before submit):", {
-      fromDate,
-      fromTime,
-      toDate,
-      toTime,
-    });
-
     const formData = new FormData();
     formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     formData.set("to", `${toDate}T${toTime || "23:59"}`);
     const tzOffset = new Date().getTimezoneOffset();
     formData.set("tzOffset", tzOffset);
     fetcher.submit(formData, { method: "post" });
-
-    console.log("DEBUG handleProcessAll sending formData:", {
-      from: `${fromDate}T${fromTime || "00:00"}`,
-      to: `${toDate}T${toTime || "23:59"}`,
-    });
   };
 
-  const handleProductSearch = (productId, fromDate, fromTime, toDate, toTime) => {
-    const fromStr = fromDate ? `${fromDate}T${fromTime || "00:00"}` : null;
-    const toStr = toDate ? `${toDate}T${toTime || "23:59"}` : null;
+  const handleProductSearch = (
+    productId,
+    fromDateValue,
+    fromTimeValue,
+    toDateValue,
+    toTimeValue
+  ) => {
+    const fromStr = fromDateValue
+      ? `${fromDateValue}T${fromTimeValue || "00:00"}`
+      : null;
+    const toStr = toDateValue
+      ? `${toDateValue}T${toTimeValue || "23:59"}`
+      : null;
     if (!fromStr || !toStr) {
       alert("Please select both from and to dates/times");
       return;
@@ -195,19 +205,55 @@ export default function CheckInventory() {
     <s-page heading="Check inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Informational banner */}
+          {/* Top banner: show already-processed range for this shop */}
           <s-banner tone="info">
-            DEBUG MODE: watch the console for date/time state and form data.
-            Select a date range and click "Process orders".
-          </s-banner>
-
-          {/* DEBUG: show raw state values */}
-          <s-banner tone="info">
-            <s-text type="strong">DEBUG current state:</s-text>
-            <s-text>fromDate: "{fromDate}"</s-text>
-            <s-text>fromTime: "{fromTime}"</s-text>
-            <s-text>toDate: "{toDate}"</s-text>
-            <s-text>toTime: "{toTime}"</s-text>
+            {processedRange ? (
+              <s-stack gap="small">
+                <s-text type="strong">
+                  Processed order history for this shop
+                </s-text>
+                <s-text>
+                  Already processed orders from{" "}
+                  {new Date(
+                    processedRange.fromDateTime
+                  ).toLocaleString()}{" "}
+                  to{" "}
+                  {new Date(
+                    processedRange.toDateTime
+                  ).toLocaleString()}
+                  .
+                </s-text>
+                {processedRange.processedOrderNameFrom &&
+                  processedRange.processedOrderNameTo && (
+                    <s-text>
+                      Order name range:{" "}
+                      {processedRange.processedOrderNameFrom} –{" "}
+                      {processedRange.processedOrderNameTo}
+                    </s-text>
+                  )}
+                <s-text>
+                  If you need to check or sync orders **outside** this
+                  processed range, select the desired date/time range
+                  below and click{" "}
+                  <s-text type="strong">Process orders</s-text> first.
+                  After processing, you can run product-specific searches
+                  within that range using the per-product table.
+                </s-text>
+              </s-stack>
+            ) : (
+              <s-stack gap="small">
+                <s-text type="strong">
+                  No processed order history found yet.
+                </s-text>
+                <s-text>
+                  Select a date/time range below and click{" "}
+                  <s-text type="strong">Process orders</s-text> to
+                  fetch and process fulfilled orders for the first time.
+                  You can then use product-specific searches within that
+                  processed range.
+                </s-text>
+              </s-stack>
+            )}
           </s-banner>
 
           {/* Global date range controls */}
@@ -287,11 +333,11 @@ export default function CheckInventory() {
             </s-stack>
           </s-stack>
 
-          {/* Success banner with detailed range info */}
+          {/* Success banner with detailed range info from action */}
           {fetcher.data?.success && fetcher.data.range && (
             <s-banner tone="success">
               <s-stack gap="small">
-                <s-text>✅ Successfully processed orders!</s-text>
+                <s-text>Successfully processed orders.</s-text>
                 <s-text>
                   Date range:{" "}
                   {new Date(
@@ -324,13 +370,23 @@ export default function CheckInventory() {
           {productFetcher.data?.success && productFetcher.data.productId && (
             <s-banner tone="info">
               <s-stack gap="small">
-                <s-text>📊 Product transaction summary</s-text>
+                <s-text>Product transaction summary</s-text>
                 <s-text>Product: {productFetcher.data.productName}</s-text>
-                <s-text>From {productFetcher.data.from} to {productFetcher.data.to}</s-text>
-                <s-text>Sales: {productFetcher.data.totals.SALE}</s-text>
-                <s-text>Returns: {productFetcher.data.totals.RETURN}</s-text>
-                <s-text>Damages: {productFetcher.data.totals.DAMAGE}</s-text>
-                <s-text>Manual Sales: {productFetcher.data.totals.MANUAL_SALE}</s-text>
+                <s-text>
+                  From {productFetcher.data.from} to {productFetcher.data.to}
+                </s-text>
+                <s-text>
+                  Sales: {productFetcher.data.totals.SALE}
+                </s-text>
+                <s-text>
+                  Returns: {productFetcher.data.totals.RETURN}
+                </s-text>
+                <s-text>
+                  Damages: {productFetcher.data.totals.DAMAGE}
+                </s-text>
+                <s-text>
+                  Manual Sales: {productFetcher.data.totals.MANUAL_SALE}
+                </s-text>
               </s-stack>
             </s-banner>
           )}
@@ -350,12 +406,16 @@ export default function CheckInventory() {
 
               <s-table variant="auto">
                 <s-table-header-row>
-                  <s-table-header listSlot="primary">Product</s-table-header>
+                  <s-table-header listSlot="primary">
+                    Product
+                  </s-table-header>
                   <s-table-header>From date</s-table-header>
                   <s-table-header>From time</s-table-header>
                   <s-table-header>To date</s-table-header>
                   <s-table-header>To time</s-table-header>
-                  <s-table-header listSlot="inline">Search</s-table-header>
+                  <s-table-header listSlot="inline">
+                    Search
+                  </s-table-header>
                 </s-table-header-row>
 
                 <s-table-body>
@@ -375,7 +435,11 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            handleProductFieldChange(row.productId, "fromDate", value);
+                            handleProductFieldChange(
+                              row.productId,
+                              "fromDate",
+                              value
+                            );
                           }}
                         />
                       </s-table-cell>
@@ -390,7 +454,11 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            handleProductFieldChange(row.productId, "fromTime", value);
+                            handleProductFieldChange(
+                              row.productId,
+                              "fromTime",
+                              value
+                            );
                           }}
                         />
                       </s-table-cell>
@@ -405,7 +473,11 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            handleProductFieldChange(row.productId, "toDate", value);
+                            handleProductFieldChange(
+                              row.productId,
+                              "toDate",
+                              value
+                            );
                           }}
                         />
                       </s-table-cell>
@@ -420,7 +492,11 @@ export default function CheckInventory() {
                               event.target?.value ??
                               event.currentTarget?.value ??
                               "";
-                            handleProductFieldChange(row.productId, "toTime", value);
+                            handleProductFieldChange(
+                              row.productId,
+                              "toTime",
+                              value
+                            );
                           }}
                         />
                       </s-table-cell>
