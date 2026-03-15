@@ -205,9 +205,9 @@ export default function CheckInventory() {
     <s-page heading="Check inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Top banner: show already-processed range for this shop */}
+          {/* Top banner: show already-processed range for this shop, or prompt to process first */}
           <s-banner tone="info">
-            {processedRange ? (
+            {processedRange && processedRange.processedOrdersCount > 0 ? (
               <s-stack gap="small">
                 <s-text type="strong">
                   Processed order history for this shop
@@ -232,12 +232,11 @@ export default function CheckInventory() {
                     </s-text>
                   )}
                 <s-text>
-                  If you need to check or sync orders **outside** this
-                  processed range, select the desired date/time range
-                  below and click{" "}
-                  <s-text type="strong">Process orders</s-text> first.
-                  After processing, you can run product-specific searches
-                  within that range using the per-product table.
+                  If you need to check or sync orders <s-text type="strong">outside</s-text> this
+                  processed range, select the desired date/time range below and click{" "}
+                  <s-text type="strong">Process orders</s-text> first. After processing,
+                  you can run product-specific searches within that range using the
+                  per-product table.
                 </s-text>
               </s-stack>
             ) : (
@@ -247,10 +246,10 @@ export default function CheckInventory() {
                 </s-text>
                 <s-text>
                   Select a date/time range below and click{" "}
-                  <s-text type="strong">Process orders</s-text> to
-                  fetch and process fulfilled orders for the first time.
-                  You can then use product-specific searches within that
-                  processed range.
+                  <s-text type="strong">Process orders</s-text> to fetch and process
+                  fulfilled orders. Once processing is complete, this banner will show
+                  the processed date range and order name range, and you can then use
+                  per-product searches within that processed window.
                 </s-text>
               </s-stack>
             )}
