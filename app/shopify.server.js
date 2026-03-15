@@ -397,9 +397,10 @@ export async function syncProducts(session, admin) {
           where: { productId: node.id },
           update: {
             productName: node.title,
-            description: cleanedDescription, // store cleaned version
+            description: cleanedDescription,
             price,
             updatedAt: new Date(),
+            shop: session.shop,   // ✅ required field added
           },
           create: {
             productId: node.id,
@@ -409,6 +410,7 @@ export async function syncProducts(session, admin) {
             quantity: 0,
             createdAt: new Date(node.createdAt),
             updatedAt: new Date(node.updatedAt),
+            shop: session.shop,   // ✅ required field added
           },
         });
         syncedCount++;
