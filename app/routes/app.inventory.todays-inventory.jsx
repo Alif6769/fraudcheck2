@@ -93,40 +93,7 @@ export async function loader({ request }) {
   });
   const snapshotMap = new Map(snapshot.map(row => [row.productId, row]));
 
-  // Aggregate cancelled totals if range provided
-  let cancelledTotals = new Map(); // productId -> total quantity
-  if (cancelledFrom && cancelledTo) {
-    const fromUTC = parseLocalToUTC(cancelledFrom.split('T')[0], cancelledFrom.split('T')[1], tzOffset);
-    const toUTC   = parseLocalToUTC(cancelledTo.split('T')[0],   cancelledTo.split('T')[1],   tzOffset);
-    
-    // Fetch all cancelled orders in the range
-    const cancelledOrders = await prisma.cancelledOrder.findMany({
-      where: {
-        shop,
-        cancelledAt: { gte: fromUTC, lte: toUTC },
-      },
-    });
-
-    // Manually aggregate quantities from productIds JSON
-    for (const order of cancelledOrders) {
-      let productIds = [];
-      try {
-        productIds = JSON.parse(order.productIds);
-      } catch {
-        continue;
-      }
-      if (Array.isArray(productIds)) {
-        for (const item of productIds) {
-          if (item.productId && item.quantity) {
-            const current = cancelledTotals.get(item.productId) || 0;
-            cancelledTotals.set(item.productId, current + item.quantity);
-          }
-        }
-      }
-    }
-  }
-
-  // Build product list from snapshot
+  // Build product list directly from snapshot – cancelledSales already aggregated
   const products = Array.from(snapshotMap.values()).map(row => ({
     productId: row.productId,
     productName: row.productName,
@@ -140,7 +107,7 @@ export async function loader({ request }) {
     fulfilledManual: row.fulfilledManual || 0,
     fulfilledReturn: row.fulfilledReturn || 0,
     fulfilledDamage: row.fulfilledDamage || 0,
-    cancelledSells: cancelledTotals.get(row.productId) || 0,
+    cancelledSells: row.cancelledSales || 0,
   }));
 
   // Compute final sells
@@ -181,15 +148,15 @@ export async function action({ request }) {
     await initializeDailySnapshot(shop);
     
     const { startUTC, endUTC } = getYesterdayUTCRange(tzOffset);
-
-    await processFulfilledOrdersWithRange(startUTC, endUTC, shop)
+    await processFulfilledOrdersWithRange(startUTC, endUTC, shop);
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
 
+    // Step 3: Sync fulfilled orders (yesterday)
     await syncFulfilled(shop, tzOffset);
 
-    // Step 3: Sync cancelled orders for the user‑selected range
+    // Step 4: Sync cancelled orders for the user‑selected range
     if (cancelledFrom && cancelledTo) {
       const fromUTC = parseLocalToUTC(cancelledFrom.split('T')[0], cancelledFrom.split('T')[1], tzOffset);
       const toUTC   = parseLocalToUTC(cancelledTo.split('T')[0],   cancelledTo.split('T')[1],   tzOffset);
