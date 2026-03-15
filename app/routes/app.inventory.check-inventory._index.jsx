@@ -23,8 +23,6 @@ function parseLocalToUTC(dateTimeStr, offsetMinutes) {
   const [year, month, day] = datePart.split("-").map(Number);
   const [hour, minute] = timePart.split(":").map(Number);
   const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
-  // offsetMinutes is from JS getTimezoneOffset() (minutes behind UTC),
-  // so we add it to convert local -> UTC.
   utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
   return utcDate;
 }
@@ -44,7 +42,7 @@ export async function loader({ request }) {
   // Get the most recent processed range for this shop
   const processedRange = await prisma.processedOrderRange.findFirst({
     where: { shop },
-    orderBy: { toDateTime: "desc" }, // latest run
+    orderBy: { toDateTime: "desc" },
   });
 
   return { products, processedRange };
@@ -59,6 +57,19 @@ export async function action({ request }) {
     const from = formData.get("from");
     const to = formData.get("to");
     const tzOffset = parseInt(formData.get("tzOffset") || "0", 10);
+
+    if (intent === "delete-history") {
+      // Delete all transaction history and processed range for this shop
+      await prisma.$transaction([
+        prisma.productTransaction.deleteMany({
+          where: { product: { shop: session.shop } }, // assuming product has shop field
+        }),
+        prisma.processedOrderRange.deleteMany({
+          where: { shop: session.shop },
+        }),
+      ]);
+      return { success: true, message: "All transaction history cleared." };
+    }
 
     if (!from || !to) {
       return new Response("Missing date range", { status: 400 });
@@ -111,15 +122,11 @@ export async function action({ request }) {
 
     // Process fulfilled orders over range
     await syncFulfilledOrdersForRange(session, admin, requestedFrom, requestedTo);
-
     const result = await processFulfilledOrdersWithRange(
       requestedFrom,
       requestedTo,
       session.shop
     );
-
-    // Optionally: if processFulfilledOrdersWithRange is not already writing
-    // ProcessedOrderRange, you could upsert it here. Assuming it does already.
 
     return { success: true, ...result };
   } catch (error) {
@@ -167,6 +174,15 @@ export default function CheckInventory() {
     fetcher.submit(formData, { method: "post" });
   };
 
+  const handleDeleteHistory = () => {
+    if (!confirm("Are you sure you want to delete ALL transaction history? This cannot be undone.")) {
+      return;
+    }
+    const formData = new FormData();
+    formData.set("intent", "delete-history");
+    fetcher.submit(formData, { method: "post" });
+  };
+
   const handleProductSearch = (
     productId,
     fromDateValue,
@@ -205,55 +221,46 @@ export default function CheckInventory() {
     <s-page heading="Check inventory" inlineSize="large">
       <s-section padding="base">
         <s-stack gap="base">
-          {/* Top banner: show already-processed range for this shop, or prompt to process first */}
-          <s-banner tone="info">
-            {processedRange && processedRange.processedOrdersCount > 0 ? (
-              <s-stack gap="small">
-                <s-text type="strong">
-                  Processed order history for this shop
-                </s-text>
-                <s-text>
-                  Already processed orders from{" "}
-                  {new Date(
-                    processedRange.fromDateTime
-                  ).toLocaleString()}{" "}
-                  to{" "}
-                  {new Date(
-                    processedRange.toDateTime
-                  ).toLocaleString()}
-                  .
-                </s-text>
-                {processedRange.processedOrderNameFrom &&
-                  processedRange.processedOrderNameTo && (
-                    <s-text>
-                      Order name range:{" "}
-                      {processedRange.processedOrderNameFrom} –{" "}
-                      {processedRange.processedOrderNameTo}
-                    </s-text>
-                  )}
-                <s-text>
-                  If you need to check or sync orders <s-text type="strong">outside</s-text> this
-                  processed range, select the desired date/time range below and click{" "}
-                  <s-text type="strong">Process orders</s-text> first. After processing,
-                  you can run product-specific searches within that range using the
-                  per-product table.
-                </s-text>
-              </s-stack>
-            ) : (
-              <s-stack gap="small">
-                <s-text type="strong">
-                  No processed order history found yet.
-                </s-text>
-                <s-text>
-                  Select a date/time range below and click{" "}
-                  <s-text type="strong">Process orders</s-text> to fetch and process
-                  fulfilled orders. Once processing is complete, this banner will show
-                  the processed date range and order name range, and you can then use
-                  per-product searches within that processed window.
-                </s-text>
-              </s-stack>
-            )}
-          </s-banner>
+          {/* Top bar with delete button */}
+          <s-stack direction="inline" gap="small" alignItems="center" wrap={false}>
+            <s-banner tone="info" style={{ flex: 1 }}>
+              {processedRange && processedRange.processedOrdersCount > 0 ? (
+                <s-stack gap="small">
+                  <s-text type="strong">
+                    Processed order history for this shop
+                  </s-text>
+                  <s-text>
+                    Already processed orders from{" "}
+                    {new Date(processedRange.fromDateTime).toLocaleString()}{" "}
+                    to{" "}
+                    {new Date(processedRange.toDateTime).toLocaleString()}
+                    .
+                  </s-text>
+                  {processedRange.processedOrderNameFrom &&
+                    processedRange.processedOrderNameTo && (
+                      <s-text>
+                        Order name range: {processedRange.processedOrderNameFrom} –{" "}
+                        {processedRange.processedOrderNameTo}
+                      </s-text>
+                    )}
+                </s-stack>
+              ) : (
+                <s-stack gap="small">
+                  <s-text type="strong">
+                    No processed order history found yet.
+                  </s-text>
+                </s-stack>
+              )}
+            </s-banner>
+            <s-button
+              variant="tertiary"
+              tone="critical"
+              onClick={handleDeleteHistory}
+              loading={isSubmitting && fetcher.submission?.formData?.get("intent") === "delete-history"}
+            >
+              Delete All History
+            </s-button>
+          </s-stack>
 
           {/* Global date range controls */}
           <s-stack gap="small">
@@ -324,7 +331,7 @@ export default function CheckInventory() {
 
               <s-button
                 variant="primary"
-                loading={isSubmitting}
+                loading={isSubmitting && fetcher.submission?.formData?.get("intent") === "process-orders"}
                 onClick={handleProcessAll}
               >
                 Process orders
@@ -339,13 +346,9 @@ export default function CheckInventory() {
                 <s-text>Successfully processed orders.</s-text>
                 <s-text>
                   Date range:{" "}
-                  {new Date(
-                    fetcher.data.range.fromDateTime
-                  ).toLocaleString()}{" "}
+                  {new Date(fetcher.data.range.fromDateTime).toLocaleString()}{" "}
                   –{" "}
-                  {new Date(
-                    fetcher.data.range.toDateTime
-                  ).toLocaleString()}
+                  {new Date(fetcher.data.range.toDateTime).toLocaleString()}
                 </s-text>
                 <s-text>
                   Orders processed: {fetcher.data.processedOrders}
@@ -353,8 +356,7 @@ export default function CheckInventory() {
                 {fetcher.data.range.processedOrderNameFrom &&
                   fetcher.data.range.processedOrderNameTo && (
                     <s-text>
-                      Order range:{" "}
-                      {fetcher.data.range.processedOrderNameFrom} –{" "}
+                      Order range: {fetcher.data.range.processedOrderNameFrom} –{" "}
                       {fetcher.data.range.processedOrderNameTo}
                     </s-text>
                   )}
@@ -363,6 +365,11 @@ export default function CheckInventory() {
                 </s-text>
               </s-stack>
             </s-banner>
+          )}
+
+          {/* Delete success message */}
+          {fetcher.data?.message && !fetcher.data.range && (
+            <s-banner tone="success">{fetcher.data.message}</s-banner>
           )}
 
           {/* Per‑product search results banner */}
