@@ -140,21 +140,150 @@ export async function initializeDailySnapshot(shop) {
   console.log(`✅ Initialized DailyInventorySnapshot for ${products.length} products (shop: ${shop})`);
 }
 
+// GraphQL query to fetch unfulfilled (and not cancelled) orders
+const GET_UNFULFILLED = `
+  query getUnfulfilledOrders($first: Int!, $after: String, $query: String!) {
+    orders(first: $first, after: $after, query: $query) {
+      edges {
+        cursor
+        node {
+          id
+          name
+          createdAt
+          updatedAt
+          cancelledAt
+          displayFulfillmentStatus
+          customer {
+            id
+            firstName
+            lastName
+            defaultPhoneNumber { phoneNumber }
+          }
+          shippingAddress {
+            address1
+            city
+            country
+            phone
+          }
+          totalPriceSet { shopMoney { amount } }
+          shippingLines(first: 10) {
+            edges {
+              node {
+                originalPriceSet { shopMoney { amount } }
+              }
+            }
+          }
+          lineItems(first: 50) {
+            edges {
+              node {
+                id
+                product { id }
+                variant { id }
+                title
+                quantity
+              }
+            }
+          }
+          sourceName
+        }
+      }
+      pageInfo { hasNextPage }
+    }
+  }
+`;
+
 /**
- * Replaces the UnfulfilledOrder table for a shop with new order data.
+ * Fetches unfulfilled orders from Shopify and replaces the UnfulfilledOrder
+ * table for this shop.
+ *
  * @param {string} shop - The shop domain.
- * @param {Array} ordersData - Array of order nodes from Shopify GraphQL (each contains id, name, lineItems, etc.)
+ * @param {object} admin - Shopify Admin GraphQL client.
+ * @returns {Promise<Array>} - Array of unfulfilled order nodes.
  */
-export async function updateUnfulfilledOrders(shop, ordersData) {
-  // Delete all existing UnfulfilledOrder records for this shop
+export async function updateUnfulfilledOrders(shop, admin) {
+  // 1. Build Shopify query for unfulfilled and not cancelled
+  const queryString = 'fulfillment_status:unfulfilled AND NOT cancelled_at:*';
+
+  console.log('==== updateUnfulfilledOrders ====');
+  console.log('Shop:', shop);
+  console.log('GraphQL queryString:', queryString);
+
+  // 2. Fetch all matching orders via pagination
+  let hasNextPage = true;
+  let cursor = null;
+  const allOrders = [];
+
+  while (hasNextPage) {
+    const response = await admin.graphql(GET_UNFULFILLED, {
+      variables: { first: 50, after: cursor, query: queryString },
+    });
+    const { data, errors } = await response.json();
+    if (errors) {
+      console.error('GraphQL errors fetching unfulfilled orders:', errors);
+      throw new Error('GraphQL error: ' + JSON.stringify(errors));
+    }
+
+    const edges =
+      (data && data.orders && data.orders.edges)
+        ? data.orders.edges
+        : [];
+    const nodes = edges.map(e => e.node);
+
+    console.log(`Page: got ${nodes.length} unfulfilled nodes`);
+    // Optional: per-order debug, comment out later if too noisy
+    nodes.forEach(n => {
+      console.log(
+        `[UNFULFILLED RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt} | fulfillmentStatus=${n.displayFulfillmentStatus}`
+      );
+    });
+
+    allOrders.push(...nodes);
+
+    hasNextPage =
+      data &&
+      data.orders &&
+      data.orders.pageInfo &&
+      data.orders.pageInfo.hasNextPage
+        ? data.orders.pageInfo.hasNextPage
+        : false;
+    cursor = edges.length ? edges[edges.length - 1].cursor : null;
+  }
+
+  // 3. Log summary: count and createdAt range
+  if (allOrders.length > 0) {
+    const byCreatedAt = [...allOrders].sort((a, b) => {
+      if (a.createdAt < b.createdAt) return -1;
+      if (a.createdAt > b.createdAt) return 1;
+      return 0;
+    });
+
+    const firstOrder = byCreatedAt[0];
+    const lastOrder = byCreatedAt[byCreatedAt.length - 1];
+
+    console.log(
+      `Fetched ${allOrders.length} unfulfilled orders for shop ${shop}.`
+    );
+    console.log(
+      `  CreatedAt range: first ${firstOrder.orderName} at ${firstOrder.createdAt} | last ${lastOrder.orderName} at ${lastOrder.createdAt}`
+    );
+  } else {
+    console.log(
+      `No unfulfilled orders fetched for shop ${shop} (query: ${queryString})`
+    );
+  }
+
+  // 4. Delete all existing UnfulfilledOrder records for this shop
   await prisma.unfulfilledOrder.deleteMany({
     where: { shop },
   });
 
-  // Insert each order into UnfulfilledOrder
-  for (const node of ordersData) {
-    const productIds = (node.lineItems?.edges || []).map(item => ({
-      productId: item.node.product?.id,
+  // 5. Insert each order into UnfulfilledOrder
+  for (const node of allOrders) {
+    const productIds = (node.lineItems && node.lineItems.edges
+      ? node.lineItems.edges
+      : []
+    ).map(item => ({
+      productId: item.node.product && item.node.product.id,
       quantity: item.node.quantity,
       title: item.node.title,
     }));
@@ -168,28 +297,60 @@ export async function updateUnfulfilledOrders(shop, ordersData) {
         updatedAt: node.updatedAt,
         cancelledAt: node.cancelledAt,
         fulfillmentStatus: node.displayFulfillmentStatus,
-        customerId: node.customer?.id,
-        firstName: node.customer?.firstName,
-        lastName: node.customer?.lastName,
-        contactPhone: node.customer?.defaultPhoneNumber?.phoneNumber,
-        shippingPhone: node.shippingAddress?.phone,
-        shippingAddress: node.shippingAddress ? JSON.stringify(node.shippingAddress) : null,
-        totalPrice: node.totalPriceSet?.shopMoney?.amount ?? "0",
-        shippingFee: node.shippingLines?.edges?.[0]?.node?.originalPriceSet?.shopMoney?.amount ?? "0",
-        products: JSON.stringify(node.lineItems?.edges.map(i => ({ title: i.node.title, quantity: i.node.quantity }))),
+        customerId: node.customer && node.customer.id,
+        firstName: node.customer && node.customer.firstName,
+        lastName: node.customer && node.customer.lastName,
+        contactPhone:
+          node.customer &&
+          node.customer.defaultPhoneNumber &&
+          node.customer.defaultPhoneNumber.phoneNumber,
+        shippingPhone:
+          node.shippingAddress && node.shippingAddress.phone,
+        shippingAddress: node.shippingAddress
+          ? JSON.stringify(node.shippingAddress)
+          : null,
+        totalPrice:
+          (node.totalPriceSet &&
+            node.totalPriceSet.shopMoney &&
+            node.totalPriceSet.shopMoney.amount) ||
+          '0',
+        shippingFee:
+          (node.shippingLines &&
+            node.shippingLines.edges &&
+            node.shippingLines.edges[0] &&
+            node.shippingLines.edges[0].node &&
+            node.shippingLines.edges[0].node.originalPriceSet &&
+            node.shippingLines.edges[0].node.originalPriceSet.shopMoney &&
+            node.shippingLines.edges[0].node.originalPriceSet.shopMoney
+              .amount) ||
+          '0',
+        products: JSON.stringify(
+          (node.lineItems && node.lineItems.edges
+            ? node.lineItems.edges
+            : []
+          ).map(i => ({
+            title: i.node.title,
+            quantity: i.node.quantity,
+          }))
+        ),
         productIds: JSON.stringify(productIds),
         source: node.sourceName,
       },
     });
   }
+
+  return allOrders;
 }
 
 /**
  * Sync unfulfilled orders from Shopify:
  * - Resets unfulfilledSales in DailyInventorySnapshot.
- * - Fetches all unfulfilled orders (paginated).
- * - Updates UnfulfilledOrder table via updateUnfulfilledOrders.
+ * - Fetches all unfulfilled orders (via updateUnfulfilledOrders).
  * - Aggregates raw product quantities and updates snapshot.
+ *
+ * @param {string} shop
+ * @param {object} session - Shopify session (not used here but kept for signature consistency)
+ * @param {object} admin - Shopify Admin GraphQL client
  */
 export async function syncUnfulfilled(shop, session, admin) {
   // 1. Reset unfulfilledSales for this shop in DailyInventorySnapshot
@@ -198,87 +359,21 @@ export async function syncUnfulfilled(shop, session, admin) {
     data: { unfulfilledSales: 0 },
   });
 
-  // 2. Fetch all unfulfilled orders from Shopify
-  const queryString = 'fulfillment_status:unfulfilled AND NOT cancelled_at:*';
-  const GET_UNFULFILLED = `
-    query getUnfulfilledOrders($first: Int!, $after: String, $query: String!) {
-      orders(first: $first, after: $after, query: $query) {
-        edges {
-          cursor
-          node {
-            id
-            name
-            createdAt
-            updatedAt
-            cancelledAt
-            displayFulfillmentStatus
-            customer {
-              id
-              firstName
-              lastName
-              defaultPhoneNumber { phoneNumber }
-            }
-            shippingAddress {
-              address1
-              city
-              country
-              phone
-            }
-            totalPriceSet { shopMoney { amount } }
-            shippingLines(first: 10) {
-              edges {
-                node {
-                  originalPriceSet { shopMoney { amount } }
-                }
-              }
-            }
-            lineItems(first: 50) {
-              edges {
-                node {
-                  id
-                  product { id }
-                  variant { id }
-                  title
-                  quantity
-                }
-              }
-            }
-          }
-        }
-        pageInfo { hasNextPage }
-      }
-    }
-  `;
+  // 2. Fetch + update UnfulfilledOrder table (now inside updateUnfulfilledOrders)
+  const allOrders = await updateUnfulfilledOrders(shop, admin);
 
-  let hasNextPage = true;
-  let cursor = null;
-  const allOrders = []; // collect all order nodes
-
-  while (hasNextPage) {
-    const response = await admin.graphql(GET_UNFULFILLED, {
-      variables: { first: 50, after: cursor, query: queryString },
-    });
-    const { data, errors } = await response.json();
-    if (errors) throw new Error('GraphQL error: ' + JSON.stringify(errors));
-
-    const orders = data?.orders?.edges || [];
-    allOrders.push(...orders.map(e => e.node));
-
-    hasNextPage = data?.orders?.pageInfo?.hasNextPage || false;
-    cursor = orders.length ? orders[orders.length - 1].cursor : null;
-  }
-
-  // 3. Update UnfulfilledOrder table using the reusable function
-  await updateUnfulfilledOrders(shop, allOrders);
-
-  // 4. Aggregate product totals for snapshot
+  // 3. Aggregate product totals for snapshot
   const productTotals = new Map();
   for (const node of allOrders) {
-    const productIds = (node.lineItems?.edges || []).map(item => ({
-      productId: item.node.product?.id,
+    const productIds = (node.lineItems && node.lineItems.edges
+      ? node.lineItems.edges
+      : []
+    ).map(item => ({
+      productId: item.node.product && item.node.product.id,
       quantity: item.node.quantity,
       title: item.node.title,
     }));
+
     const orderObj = { productIds };
     const quantities = await decomposeOrder(orderObj, prisma);
     for (const [pid, qty] of quantities) {
@@ -286,14 +381,16 @@ export async function syncUnfulfilled(shop, session, admin) {
     }
   }
 
-  // 5. Update DailyInventorySnapshot with new totals
+  // 4. Update DailyInventorySnapshot with new totals
   for (const [productId, totalQty] of productTotals) {
     // Fetch product details to populate required fields
     const product = await prisma.product.findUnique({
       where: { productId },
     });
     if (!product) {
-      console.warn(`⚠️ Product ${productId} not found, skipping unfulfilled update`);
+      console.warn(
+        `⚠️ Product ${productId} not found, skipping unfulfilled update`
+      );
       continue;
     }
 
@@ -304,7 +401,7 @@ export async function syncUnfulfilled(shop, session, admin) {
         productId,
         shop,
         unfulfilledSales: totalQty,
-        // Copy all product fields
+        // Copy all product fields from product record
         productName: product.productName,
         price: product.price,
         quantity: product.quantity,
@@ -319,12 +416,14 @@ export async function syncUnfulfilled(shop, session, admin) {
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
         todayDateTime: new Date(),
-        // other counters default to 0
+        // any other counters default to 0 by your Prisma schema
       },
     });
   }
 
-  console.log(`✅ Synced unfulfilled orders for shop ${shop}, stored ${productTotals.size} product totals`);
+  console.log(
+    `✅ Synced unfulfilled orders for shop ${shop}, stored ${productTotals.size} product totals`
+  );
 }
 
 // ---------- 3. Sync Fulfilled Orders (yesterday) using transactions ----------
@@ -497,11 +596,11 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
   const toStr = toDate.toISOString();
   const queryString = `status:cancelled`;
 
-  console.log('==== updateCancelledOrders ====');
-  console.log('Shop:', shop);
-  console.log('fromDate:', fromDate.toISOString());
-  console.log('toDate:  ', toDate.toISOString());
-  console.log('GraphQL queryString:', queryString);
+  // console.log('==== updateCancelledOrders ====');
+  // console.log('Shop:', shop);
+  // console.log('fromDate:', fromDate.toISOString());
+  // console.log('toDate:  ', toDate.toISOString());
+  // console.log('GraphQL queryString:', queryString);
 
   // 2. Fetch cancelled orders via pagination (by status)
   let hasNextPage = true;
@@ -521,12 +620,12 @@ export async function updateCancelledOrders(shop, admin, fromDate, toDate) {
     const edges = (data && data.orders && data.orders.edges) || [];
     const nodes = edges.map(e => e.node);
 
-    console.log(`Page: got ${nodes.length} nodes`);
-    nodes.forEach(n => {
-      console.log(
-        `[RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt}`
-      );
-    });
+    // console.log(`Page: got ${nodes.length} nodes`);
+    // nodes.forEach(n => {
+    //   console.log(
+    //     `[RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt}`
+    //   );
+    // });
 
     allFetched.push(...nodes);
 
