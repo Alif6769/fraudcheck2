@@ -230,6 +230,40 @@ model InventoryDaily {
   @@unique([productId, date])
 }
 
+model CourierService {
+  id                 BigInt   @id @default(autoincrement())
+  name               String   @unique // 'pathao', 'steadfast'
+  displayName        String   @map("display_name")
+  trackingUrlPattern String?  @map("tracking_url_pattern")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  credentials ShopCourierCredentials[]
+
+  @@map("courier_services")
+}
+
+model ShopCourierCredentials {
+  id                BigInt   @id @default(autoincrement())
+  shopDomain        String   @map("shop_domain")                 // just a string, no relation
+  courierServiceId  BigInt   @map("courier_service_id")
+  credentials       String                                       // encrypted JSON
+  accessToken       String?  @map("access_token")                // encrypted (for Pathao)
+  refreshToken      String?  @map("refresh_token")               // encrypted (for Pathao)
+  tokenExpiresAt    DateTime? @map("token_expires_at")
+  storeId           String?  @map("store_id")                    // courier-specific store ID
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Keep relation to CourierService (that's fine)
+  courierService    CourierService @relation(fields: [courierServiceId], references: [id], onDelete: Cascade)
+
+  @@unique([shopDomain, courierServiceId])
+  @@map("shop_courier_credentials")
+}
+
 model ProcessedFulfillment {
   orderId     String   @id
   processedAt DateTime @default(now())
