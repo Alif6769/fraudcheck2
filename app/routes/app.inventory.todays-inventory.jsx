@@ -148,6 +148,8 @@ export async function action({ request }) {
     await initializeDailySnapshot(shop);
     
     const { startUTC, endUTC } = getYesterdayUTCRange(tzOffset);
+    console.log('🟢 getYesterdayUTCRange – startUTC:', startUTC.toISOString());
+    console.log('🟢 getYesterdayUTCRange – endUTC:', endUTC.toISOString());
     await processFulfilledOrdersWithRange(startUTC, endUTC, shop);
 
     // Step 2: Sync unfulfilled orders

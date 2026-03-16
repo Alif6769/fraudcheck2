@@ -201,11 +201,12 @@ const GET_UNFULFILLED = `
  *   - cancelledAt == null
  *
  * @param {string} shop - The shop domain.
- * @param {object} admin - Shopify Admin GraphQL client.
+ * @param {object} admin - Shopify Admin GraphQL client (Remix `admin.graphql`).
  * @returns {Promise<Array>} - Array of unfulfilled (not cancelled) order nodes.
  */
 export async function updateUnfulfilledOrders(shop, admin) {
-  const queryString = 'fulfillment_status:UNFULFILLED*';
+  // IMPORTANT: this must match what worked in your Python script
+  const queryString = 'fulfillment_status:unfulfilled AND status:open';
 
   console.log('==== updateUnfulfilledOrders ====');
   console.log('Shop:', shop);
@@ -217,28 +218,24 @@ export async function updateUnfulfilledOrders(shop, admin) {
 
   while (hasNextPage) {
     let data;
+    let errors;
 
     try {
-      // For Shopify's Admin GraphQL client, this usually returns the parsed data
-      const result = await admin.graphql(GET_UNFULFILLED, {
+      // In the Remix app template, admin.graphql returns a fetch Response
+      const response = await admin.graphql(GET_UNFULFILLED, {
         variables: { first: 50, after: cursor, query: queryString },
       });
 
-      // If using the official Graphql client: result *is* the data
-      // If you're actually using a raw fetch client, uncomment the next line instead:
-      // const result = await admin.graphql(GET_UNFULFILLED, { variables: { first: 50, after: cursor, query: queryString } });
-      // const { data: parsedData, errors } = await result.json();
-
-      // Adjust this depending on your exact client:
-      data = result.data ?? result; // handles both { data, errors } or direct data
-      const errors = result.errors;
+      const json = await response.json();
+      data = json.data;
+      errors = json.errors;
 
       if (errors) {
         console.error('GraphQL errors fetching unfulfilled orders:', errors);
         throw new Error('GraphQL error: ' + JSON.stringify(errors));
       }
     } catch (err) {
-      console.error('❌ GraphQL fetch failed details:', {
+      console.error('❌ GraphQL fetch failed details (unfulfilled):', {
         message: err.message,
         stack: err.stack,
         cause: err.cause,
@@ -252,7 +249,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
         : [];
     const nodes = edges.map(e => e.node);
 
-    // DEBUG: Log each node's fulfillment status and cancellation
+    // DEBUG: log what we actually got from Shopify
     console.log(`Page fetched ${nodes.length} orders:`);
     nodes.forEach(n => {
       console.log({
@@ -284,11 +281,19 @@ export async function updateUnfulfilledOrders(shop, admin) {
   });
 
   console.log(
-    `Total fetched from Shopify: ${allFetched.length}`
+    `Total fetched from Shopify (unfulfilled search): ${allFetched.length}`
   );
   console.log(
     `Total after in-code filter (UNFULFILLED + cancelledAt == null): ${filtered.length}`
   );
+
+  // Optional: summarize displayFulfillmentStatus counts for debugging
+  const statusCounts = allFetched.reduce((acc, n) => {
+    const status = n.displayFulfillmentStatus || 'NULL';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  console.log('displayFulfillmentStatus counts (unfulfilled search):', statusCounts);
 
   // 4. Log summary: count and createdAt range for filtered orders
   if (filtered.length > 0) {
@@ -485,6 +490,9 @@ export async function syncFulfilled(shop, tzOffset) {
   const yesterdayDateStr = `${yesterdayYear}-${String(yesterdayMonth).padStart(2, '0')}-${String(yesterdayDay).padStart(2, '0')}`;
   const startUTC = parseLocalToUTC(yesterdayDateStr, "00:00", tzOffset);
   const endUTC   = parseLocalToUTC(yesterdayDateStr, "23:59", tzOffset);
+  console.log('🟢 syncFulfilled – yesterday local date:', yesterdayDateStr);
+  console.log('🟢 syncFulfilled – startUTC:', startUTC.toISOString());
+  console.log('🟢 syncFulfilled – endUTC:', endUTC.toISOString());
 
   // Fetch transactions in that UTC range
   const transactions = await prisma.productTransaction.findMany({
