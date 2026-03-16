@@ -252,6 +252,18 @@ export async function updateUnfulfilledOrders(shop, admin) {
         : [];
     const nodes = edges.map(e => e.node);
 
+    // DEBUG: Log each node's fulfillment status and cancellation
+    console.log(`Page fetched ${nodes.length} orders:`);
+    nodes.forEach(n => {
+      console.log({
+        name: n.name,
+        id: n.id,
+        displayFulfillmentStatus: n.displayFulfillmentStatus,
+        cancelledAt: n.cancelledAt,
+        createdAt: n.createdAt,
+      });
+    });
+
     allFetched.push(...nodes);
 
     hasNextPage =

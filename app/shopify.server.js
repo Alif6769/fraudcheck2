@@ -50,10 +50,10 @@ const shopify = shopifyApp({
     //   deliveryMethod: DeliveryMethod.Http,
     //   callbackUrl: "/webhooks/orders/cancelled",
     // },
-    ORDERS_FULFILLED: {
-      deliveryMethod: DeliveryMethod.Http,
-      callbackUrl: "/webhooks/orders/fulfilled",
-    },
+    // ORDERS_FULFILLED: {
+    //   deliveryMethod: DeliveryMethod.Http,
+    //   callbackUrl: "/webhooks/orders/fulfilled",
+    // },
     // // App uninstall webhook
     // APP_UNINSTALLED: {
     //   deliveryMethod: DeliveryMethod.Http,
