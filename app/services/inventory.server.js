@@ -208,7 +208,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
   // 1. Build Shopify query for unfulfilled and not cancelled
   // NOTE: We still use this, but we ALSO filter in code because
   // Shopify is clearly returning some cancelled orders.
-  const queryString = 'fulfillment_status:unfulfilled AND NOT cancelled_at:*';
+  const queryString = 'fulfillment_status:unfulfilled*';
 
   console.log('==== updateUnfulfilledOrders ====');
   console.log('Shop:', shop);
