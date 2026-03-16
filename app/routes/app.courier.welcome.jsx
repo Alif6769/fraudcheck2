@@ -1,12 +1,20 @@
-function Welcome() {
-  // State for Pathao form
+// app/routes/app.courier.welcome.jsx
+import { useState } from "react";
+
+export async function loader() {
+  // Required even if empty – returns no data
+  return null;
+}
+
+export default function Welcome() {
+  // Pathao state
   const [pathaoClientId, setPathaoClientId] = useState('');
   const [pathaoClientSecret, setPathaoClientSecret] = useState('');
   const [pathaoEmail, setPathaoEmail] = useState('');
   const [pathaoPassword, setPathaoPassword] = useState('');
   const [pathaoSubmitted, setPathaoSubmitted] = useState(false);
 
-  // State for Steadfast form
+  // Steadfast state
   const [steadfastApiKey, setSteadfastApiKey] = useState('');
   const [steadfastApiSecret, setSteadfastApiSecret] = useState('');
   const [steadfastSubmitted, setSteadfastSubmitted] = useState(false);
