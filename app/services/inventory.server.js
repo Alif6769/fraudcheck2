@@ -272,16 +272,16 @@ export async function updateUnfulfilledOrders(shop, admin) {
     const nodes = edges.map(e => e.node);
 
     // DEBUG: log what we actually got from Shopify
-    console.log(`Page fetched ${nodes.length} orders:`);
-    nodes.forEach(n => {
-      console.log({
-        name: n.name,
-        id: n.id,
-        displayFulfillmentStatus: n.displayFulfillmentStatus,
-        cancelledAt: n.cancelledAt,
-        createdAt: n.createdAt,
-      });
-    });
+    // console.log(`Page fetched ${nodes.length} orders:`);
+    // nodes.forEach(n => {
+    //   console.log({
+    //     name: n.name,
+    //     id: n.id,
+    //     displayFulfillmentStatus: n.displayFulfillmentStatus,
+    //     cancelledAt: n.cancelledAt,
+    //     createdAt: n.createdAt,
+    //   });
+    // });
 
     allFetched.push(...nodes);
 
