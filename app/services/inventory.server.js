@@ -220,9 +220,19 @@ export async function updateUnfulfilledOrders(shop, admin) {
   const allFetched = [];
 
   while (hasNextPage) {
-    const response = await admin.graphql(GET_UNFULFILLED, {
-      variables: { first: 50, after: cursor, query: queryString },
-    });
+    try {
+      const response = await admin.graphql(GET_UNFULFILLED, {
+        variables: { first: 50, after: cursor, query: queryString },
+      });
+      // ... rest
+    } catch (err) {
+      console.error('❌ GraphQL fetch failed details:', {
+        message: err.message,
+        stack: err.stack,
+        cause: err.cause,         // if available
+      });
+      throw err;
+    }
     const { data, errors } = await response.json();
     if (errors) {
       console.error('GraphQL errors fetching unfulfilled orders:', errors);
