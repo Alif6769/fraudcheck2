@@ -1,5 +1,4 @@
 // app/routes/api.courier.configure.jsx
-import { json } from "@remix-run/node"; // or use your server's JSON response utility
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { encrypt } from "../utils/encryption.server";
@@ -18,7 +17,10 @@ export async function action({ request }) {
       where: { name: courier },
     });
     if (!courierService) {
-      return json({ error: "Invalid courier" }, { status: 400 });
+      return new Response(JSON.stringify({ error: "Invalid courier" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // Encrypt the raw credentials
@@ -49,14 +51,14 @@ export async function action({ request }) {
         tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
       } catch (error) {
         console.error("Pathao token error:", error.response?.data || error.message);
-        return json(
-          { error: "Failed to obtain Pathao access token. Check your credentials." },
-          { status: 400 }
+        return new Response(
+          JSON.stringify({
+            error: "Failed to obtain Pathao access token. Check your credentials.",
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
     }
-
-    // For Steadfast, you could optionally validate the API key here
 
     // Upsert credentials (create or update)
     await prisma.shopCourierCredentials.upsert({
@@ -87,14 +89,22 @@ export async function action({ request }) {
     });
 
     // Return encrypted string for debugging
-    return json({ success: true, encrypted: encryptedCredentials });
+    return new Response(
+      JSON.stringify({ success: true, encrypted: encryptedCredentials }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Database error:", error);
-    return json({ error: "Failed to save credentials." }, { status: 500 });
+    return new Response(
+      JSON.stringify({ error: "Failed to save credentials." }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 }
 
-// Resource routes don't need a default export, but we can export a loader if needed
 export function loader() {
-  return json({ error: "Method not allowed" }, { status: 405 });
+  return new Response(JSON.stringify({ error: "Method not allowed" }), {
+    status: 405,
+    headers: { "Content-Type": "application/json" },
+  });
 }
