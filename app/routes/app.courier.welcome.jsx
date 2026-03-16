@@ -50,34 +50,34 @@ export default function Welcome() {
           </s-text>
           <form onSubmit={handlePathaoConfirm}>
             <s-stack gap="small">
-              <s-text-field
+                <s-text-field
                 label="Client ID"
                 value={pathaoClientId}
-                onChange={setPathaoClientId}
+                onChange={(e) => setPathaoClientId(e.target.value)}
                 required
-              />
-              <s-text-field
+                />
+                <s-text-field
                 label="Client Secret"
                 type="password"
                 value={pathaoClientSecret}
-                onChange={setPathaoClientSecret}
+                onChange={(e) => setPathaoClientSecret(e.target.value)}
                 required
-              />
-              <s-text-field
+                />
+                <s-text-field
                 label="Email"
                 type="email"
                 value={pathaoEmail}
-                onChange={setPathaoEmail}
+                onChange={(e) => setPathaoEmail(e.target.value)}
                 required
-              />
-              <s-text-field
+                />
+                <s-text-field
                 label="Password"
                 type="password"
                 value={pathaoPassword}
-                onChange={setPathaoPassword}
+                onChange={(e) => setPathaoPassword(e.target.value)}
                 required
-              />
-              <s-button type="submit">Confirm Pathao</s-button>
+                />
+                <s-button type="submit">Confirm Pathao</s-button>
             </s-stack>
           </form>
           {pathaoSubmitted && (
@@ -104,16 +104,16 @@ export default function Welcome() {
               <s-text-field
                 label="API Key"
                 value={steadfastApiKey}
-                onChange={setSteadfastApiKey}
+                onChange={(e) => setSteadfastApiKey(e.target.value)}
                 required
-              />
-              <s-text-field
+                />
+                <s-text-field
                 label="API Secret"
                 type="password"
                 value={steadfastApiSecret}
-                onChange={setSteadfastApiSecret}
+                onChange={(e) => setSteadfastApiSecret(e.target.value)}
                 required
-              />
+                />
               <s-button type="submit">Confirm Steadfast</s-button>
             </s-stack>
           </form>
