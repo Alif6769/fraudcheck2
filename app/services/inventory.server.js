@@ -205,7 +205,7 @@ const GET_UNFULFILLED = `
  * @returns {Promise<Array>} - Array of unfulfilled (not cancelled) order nodes.
  */
 export async function updateUnfulfilledOrders(shop, admin) {
-  const queryString = 'fulfillment_status:unfulfilled AND -status:cancelled*';
+  const queryString = 'fulfillment_status:unfulfilled*';
 
   console.log('==== updateUnfulfilledOrders ====');
   console.log('Shop:', shop);
