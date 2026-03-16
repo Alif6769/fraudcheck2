@@ -205,38 +205,45 @@ const GET_UNFULFILLED = `
  * @returns {Promise<Array>} - Array of unfulfilled (not cancelled) order nodes.
  */
 export async function updateUnfulfilledOrders(shop, admin) {
-  // 1. Build Shopify query for unfulfilled and not cancelled
-  // NOTE: We still use this, but we ALSO filter in code because
-  // Shopify is clearly returning some cancelled orders.
-  const queryString = 'fulfillment_status:unfulfilled*';
+  const queryString = 'fulfillment_status:unfulfilled AND -status:cancelled*';
 
   console.log('==== updateUnfulfilledOrders ====');
   console.log('Shop:', shop);
   console.log('GraphQL queryString:', queryString);
 
-  // 2. Fetch all matching orders via pagination
   let hasNextPage = true;
   let cursor = null;
   const allFetched = [];
 
   while (hasNextPage) {
+    let data;
+
     try {
-      const response = await admin.graphql(GET_UNFULFILLED, {
+      // For Shopify's Admin GraphQL client, this usually returns the parsed data
+      const result = await admin.graphql(GET_UNFULFILLED, {
         variables: { first: 50, after: cursor, query: queryString },
       });
-      // ... rest
+
+      // If using the official Graphql client: result *is* the data
+      // If you're actually using a raw fetch client, uncomment the next line instead:
+      // const result = await admin.graphql(GET_UNFULFILLED, { variables: { first: 50, after: cursor, query: queryString } });
+      // const { data: parsedData, errors } = await result.json();
+
+      // Adjust this depending on your exact client:
+      data = result.data ?? result; // handles both { data, errors } or direct data
+      const errors = result.errors;
+
+      if (errors) {
+        console.error('GraphQL errors fetching unfulfilled orders:', errors);
+        throw new Error('GraphQL error: ' + JSON.stringify(errors));
+      }
     } catch (err) {
       console.error('❌ GraphQL fetch failed details:', {
         message: err.message,
         stack: err.stack,
-        cause: err.cause,         // if available
+        cause: err.cause,
       });
       throw err;
-    }
-    const { data, errors } = await response.json();
-    if (errors) {
-      console.error('GraphQL errors fetching unfulfilled orders:', errors);
-      throw new Error('GraphQL error: ' + JSON.stringify(errors));
     }
 
     const edges =
@@ -244,13 +251,6 @@ export async function updateUnfulfilledOrders(shop, admin) {
         ? data.orders.edges
         : [];
     const nodes = edges.map(e => e.node);
-
-    // console.log(`Page: got ${nodes.length} unfulfilled nodes`);
-    // nodes.forEach(n => {
-    //   console.log(
-    //     `[UNFULFILLED RAW] name=${n.name} | createdAt=${n.createdAt} | cancelledAt=${n.cancelledAt} | fulfillmentStatus=${n.displayFulfillmentStatus}`
-    //   );
-    // });
 
     allFetched.push(...nodes);
 
@@ -324,7 +324,7 @@ export async function updateUnfulfilledOrders(shop, admin) {
         shop,
         orderTime: new Date(node.createdAt),
         updatedAt: node.updatedAt,
-        cancelledAt: node.cancelledAt, // will be null here, but fine if Prisma field is nullable
+        cancelledAt: node.cancelledAt,
         fulfillmentStatus: node.displayFulfillmentStatus,
         customerId: node.customer && node.customer.id,
         firstName: node.customer && node.customer.firstName,
