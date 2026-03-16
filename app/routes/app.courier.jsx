@@ -1,7 +1,7 @@
 // app/routes/app.courier.jsx
 import { Outlet, useNavigate, useLocation, redirect } from "react-router";
 
-// Minimal placeholder components
+// Minimal placeholder componentss
 function Welcome() {
   return (
     <s-stack gap="base">
