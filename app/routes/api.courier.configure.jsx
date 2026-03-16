@@ -1,7 +1,7 @@
 // app/routes/api.courier.configure.jsx
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { encrypt } from "../utils/encryption.server";
+import { encrypt } from "../../utils/encryption";
 import axios from "axios";
 
 export async function action({ request }) {

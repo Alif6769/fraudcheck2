@@ -1,8 +1,7 @@
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12; // GCM recommended IV length
-const TAG_LENGTH = 16;
 const KEY = Buffer.from(process.env.ENCRYPTION_KEY, 'hex'); // ensure key is 32 bytes
 
 if (KEY.length !== 32) {
@@ -14,7 +13,7 @@ if (KEY.length !== 32) {
  * @param {string} plaintext - Data to encrypt
  * @returns {string} - Encrypted data in format: iv:tag:encrypted (all base64)
  */
-function encrypt(plaintext) {
+export function encrypt(plaintext) {
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, KEY, iv);
   let encrypted = cipher.update(plaintext, 'utf8', 'binary');
@@ -32,7 +31,7 @@ function encrypt(plaintext) {
  * @param {string} ciphertext - Data in format: iv:tag:encrypted (all base64)
  * @returns {string} - Decrypted plaintext
  */
-function decrypt(ciphertext) {
+export function decrypt(ciphertext) {
   const [ivBase64, tagBase64, encryptedBase64] = ciphertext.split(':');
   const iv = Buffer.from(ivBase64, 'base64');
   const tag = Buffer.from(tagBase64, 'base64');
@@ -43,5 +42,3 @@ function decrypt(ciphertext) {
   decrypted += decipher.final('utf8');
   return decrypted;
 }
-
-module.exports = { encrypt, decrypt };
