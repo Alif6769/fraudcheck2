@@ -111,6 +111,7 @@ export default function HomePage() {
           <s-stack direction="inline" gap="small">
             <s-link href="/app">Home</s-link>
             <s-link href="/app/inventory">Inventory</s-link>
+            <s-link href="/app/courier">Courier Serivices</s-link>
           </s-stack>
 
           {/* Your existing dashboard UI */}
