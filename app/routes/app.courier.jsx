@@ -1,34 +1,6 @@
 // app/routes/app.courier.jsx
 import { Outlet, useNavigate, useLocation, redirect } from "react-router";
 
-// Minimal placeholder componentss
-function Welcome() {
-  return (
-    <s-stack gap="base">
-      <s-heading level="2">Welcome (minimal)</s-heading>
-      <s-text>This is the welcome page. Setup forms will go here later.</s-text>
-    </s-stack>
-  );
-}
-
-function PathaoConfig() {
-  return (
-    <s-stack gap="base">
-      <s-heading level="2">Pathao Dashboard (minimal)</s-heading>
-      <s-text>Placeholder for Pathao order management.</s-text>
-    </s-stack>
-  );
-}
-
-function SteadfastConfig() {
-  return (
-    <s-stack gap="base">
-      <s-heading level="2">Steadfast Dashboard (minimal)</s-heading>
-      <s-text>Placeholder for Steadfast order management.</s-text>
-    </s-stack>
-  );
-}
-
 export async function loader({ request }) {
   const url = new URL(request.url);
   if (url.pathname === "/app/courier") {
@@ -83,7 +55,8 @@ export default function CourierLayout() {
               {/* Breadcrumb */}
               <s-stack direction="inline" gap="small">
                 <s-link href="/app">Home</s-link>
-                <s-link href="/app/courier">Courier</s-link>
+                <s-link href="/app/inventory">Inventory</s-link>
+                <s-link href="/app/courier">Courier Serivices</s-link>
               </s-stack>
 
               <Outlet />
