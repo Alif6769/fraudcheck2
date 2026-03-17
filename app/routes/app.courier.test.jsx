@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { decrypt } from "../utils/encryption.js";
+import { decrypt } from "../../utils/encryption.js";
 import axios from "axios";
 
 // ---------- Loader: fetch and decrypt credentials ----------
