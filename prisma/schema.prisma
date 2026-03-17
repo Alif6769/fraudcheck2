@@ -53,7 +53,8 @@ model Order {
   shippingFee     String
   products        Json
   // new fields
-  productIds        Json?
+  shipments       CourierShipment[]  // ← opposite field
+  productIds      Json?
   source          String? // e.g., "web", "pos", etc.
   fraudReport     String? // full text report from FraudSpy
   steadFastReport String?
@@ -107,6 +108,23 @@ model CancelledOrder {
   // new fields
   productIds        Json?
   source          String? // e.g., "web", "pos", etc.
+}
+
+model CourierShipment {
+  id             Int      @id @default(autoincrement())
+  orderName      String   // references Order.orderName
+  courierName    String   // "pathao" or "steadfast"
+  consignmentId  String
+  trackingCode   String?  // only for Steadfast
+  trackingLink   String?
+  status         String?  // order status from courier
+  response       Json     // full API response (raw)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  order          Order    @relation(fields: [orderName], references: [orderName], onDelete: Cascade)
+
+  @@map("courier_shipments")
 }
 
 // Product table

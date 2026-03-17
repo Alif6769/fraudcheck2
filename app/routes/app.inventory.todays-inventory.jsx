@@ -7,7 +7,7 @@ import {
   syncUnfulfilled,
   syncCancelled,
   syncFulfilled,
-  processFulfilledOrdersWithRange,
+  syncFulfilledOrdersForRange,
 } from "../services/inventory.server";
 
 // Helper: Convert a local date (YYYY-MM-DD) + time + offset to UTC Date
@@ -150,7 +150,8 @@ export async function action({ request }) {
     const { startUTC, endUTC } = getYesterdayUTCRange(tzOffset);
     console.log('🟢 getYesterdayUTCRange – startUTC:', startUTC.toISOString());
     console.log('🟢 getYesterdayUTCRange – endUTC:', endUTC.toISOString());
-    await processFulfilledOrdersWithRange(startUTC, endUTC, shop);
+    // await processFulfilledOrdersWithRange(startUTC, endUTC, shop);
+    await syncFulfilledOrdersForRange(session, admin, startUTC, endUTC)
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
