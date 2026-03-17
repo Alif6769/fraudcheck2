@@ -23,17 +23,18 @@ export async function action({ request }) {
       });
     }
 
-    // Encrypt the raw credentials
-    const encryptedCredentials = encrypt(JSON.stringify(credentials));
+    // Base credentials object that will be encrypted
+    let fullCredentials = { ...credentials };
 
     let accessToken = null;
     let refreshToken = null;
     let tokenExpiresAt = null;
     let storeId = null;
 
-    // For Pathao, obtain an access token using the provided credentials
+    // For Pathao, obtain an access token and fetch stores
     if (courier === "pathao") {
       try {
+        // Step 1: Get access token
         const tokenResponse = await axios.post(
           "https://api-hermes.pathao.com/aladdin/api/v1/issue-token",
           {
@@ -46,8 +47,57 @@ export async function action({ request }) {
         );
 
         const tokenData = tokenResponse.data;
-        accessToken = encrypt(tokenData.access_token);
-        refreshToken = tokenData.refresh_token ? encrypt(tokenData.refresh_token) : null;
+        const rawAccessToken = tokenData.access_token;
+        const rawRefreshToken = tokenData.refresh_token;
+
+        // Step 2: Fetch stores using the raw token
+        try {
+          const storesResponse = await axios.get(
+            "https://api-hermes.pathao.com/aladdin/api/v1/stores",
+            {
+              headers: {
+                Authorization: `Bearer ${rawAccessToken}`,
+                "Content-Type": "application/json",
+              },
+            }
+          );
+
+          // Extract store list (each store has store_id, store_name, etc.)
+          if (
+            storesResponse.data.code === 200 &&
+            storesResponse.data.data &&
+            storesResponse.data.data.data
+          ) {
+            const stores = storesResponse.data.data.data;
+            // Attach stores to the credentials object
+            fullCredentials.stores = stores;
+            // Also set a default storeId (first store) for backward compatibility
+            if (stores.length > 0) {
+              storeId = stores[0].store_id.toString();
+            }
+          } else {
+            console.error("No stores found for Pathao merchant");
+            return new Response(
+              JSON.stringify({
+                error:
+                  "No stores found for your Pathao account. Please create a store in your Pathao merchant dashboard first.",
+              }),
+              { status: 400, headers: { "Content-Type": "application/json" } }
+            );
+          }
+        } catch (storeError) {
+          console.error("Pathao stores fetch error:", storeError.response?.data || storeError.message);
+          return new Response(
+            JSON.stringify({
+              error: "Failed to fetch stores from Pathao. Please check your credentials and try again.",
+            }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        // Step 3: Encrypt tokens
+        accessToken = encrypt(rawAccessToken);
+        refreshToken = rawRefreshToken ? encrypt(rawRefreshToken) : null;
         tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
       } catch (error) {
         console.error("Pathao token error:", error.response?.data || error.message);
@@ -59,6 +109,11 @@ export async function action({ request }) {
         );
       }
     }
+
+    // For Steadfast, you could optionally validate the API key here
+
+    // Encrypt the full credentials (including stores for Pathao)
+    const encryptedCredentials = encrypt(JSON.stringify(fullCredentials));
 
     // Upsert credentials (create or update)
     await prisma.shopCourierCredentials.upsert({
@@ -73,7 +128,7 @@ export async function action({ request }) {
         accessToken,
         refreshToken,
         tokenExpiresAt,
-        storeId,
+        storeId,   // still store the default store ID for convenience
         isActive: true,
       },
       create: {
@@ -88,9 +143,13 @@ export async function action({ request }) {
       },
     });
 
-    // Return encrypted string for debugging
+    // Return success (optionally include store list for immediate UI update)
     return new Response(
-      JSON.stringify({ success: true, encrypted: encryptedCredentials }),
+      JSON.stringify({ 
+        success: true, 
+        encrypted: encryptedCredentials,
+        stores: fullCredentials.stores // send stores back so frontend can show them
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {

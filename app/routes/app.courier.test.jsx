@@ -1,6 +1,6 @@
 // app/routes/app.courier.test.jsx
 import { useState } from "react";
-import { useLoaderData } from "react-router";               // ✅ added
+import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { decrypt } from "../../utils/encryption.js";
@@ -18,7 +18,6 @@ export async function loader({ request }) {
     where: { name: "steadfast" },
   });
 
-  // If a courier service is missing, still return null for that part
   const pathaoCreds = pathaoService
     ? await prisma.shopCourierCredentials.findUnique({
         where: {
@@ -41,13 +40,14 @@ export async function loader({ request }) {
       })
     : null;
 
+  // Decrypt the full credentials (including stores for Pathao)
   const decrypted = {
     pathao: pathaoCreds
       ? {
           ...JSON.parse(decrypt(pathaoCreds.credentials)),
           accessToken: decrypt(pathaoCreds.accessToken),
           refreshToken: pathaoCreds.refreshToken ? decrypt(pathaoCreds.refreshToken) : null,
-          storeId: pathaoCreds.storeId,
+          defaultStoreId: pathaoCreds.storeId, // the default store ID (first store)
         }
       : null,
     steadfast: steadfastCreds
@@ -55,7 +55,7 @@ export async function loader({ request }) {
       : null,
   };
 
-  return { decrypted, shopDomain }; // ✅ Return plain object – React Router serializes it
+  return { decrypted, shopDomain };
 }
 
 // ---------- Action: handle order creation ----------
@@ -102,10 +102,12 @@ async function createPathaoOrder(shopDomain, orderData) {
   if (!creds) throw new Error("Pathao not configured");
 
   const accessToken = decrypt(creds.accessToken);
-  const storeId = parseInt(creds.storeId);
+  // Use the store ID from the form (selected by user), fallback to stored default
+  const storeId = orderData.selected_store_id || creds.storeId;
+  if (!storeId) throw new Error("No store selected for Pathao order");
 
   const payload = {
-    store_id: storeId,
+    store_id: parseInt(storeId),
     merchant_order_id: orderData.merchant_order_id,
     recipient_name: orderData.recipient_name,
     recipient_phone: orderData.recipient_phone,
@@ -201,12 +203,13 @@ async function createSteadfastOrder(shopDomain, orderData) {
 
 // ---------- Component ----------
 export default function CourierTest() {
-  const { decrypted, shopDomain } = useLoaderData(); // ✅ now works
+  const { decrypted, shopDomain } = useLoaderData();
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Pathao form state
   const [pathaoForm, setPathaoForm] = useState({
+    selected_store_id: decrypted?.pathao?.defaultStoreId || "",
     merchant_order_id: "TEST-001",
     recipient_name: "Test Customer",
     recipient_phone: "01712345678",
@@ -235,8 +238,6 @@ export default function CourierTest() {
     recipient_email: "",
     item_description: "Test parcel",
   });
-
-  // ❌ REMOVED the manual fetch block (lines 206‑213) that used useState incorrectly
 
   const handlePathaoSubmit = async (e) => {
     e.preventDefault();
@@ -310,6 +311,24 @@ export default function CourierTest() {
         <s-heading level="3">Create Pathao Test Order</s-heading>
         <form onSubmit={handlePathaoSubmit}>
           <s-grid columns="1fr 1fr" gap="small">
+            {/* Store selection dropdown */}
+            {decrypted?.pathao?.stores && decrypted.pathao.stores.length > 0 && (
+              <s-box gridColumn="span 2">
+                <label>Select Pickup Store</label>
+                <select
+                  value={pathaoForm.selected_store_id}
+                  onChange={(e) => setPathaoForm({ ...pathaoForm, selected_store_id: e.target.value })}
+                  required
+                >
+                  <option value="">-- Select a store --</option>
+                  {decrypted.pathao.stores.map((store) => (
+                    <option key={store.store_id} value={store.store_id}>
+                      {store.store_name} (ID: {store.store_id})
+                    </option>
+                  ))}
+                </select>
+              </s-box>
+            )}
             <s-text-field
               label="Merchant Order ID"
               value={pathaoForm.merchant_order_id}
@@ -399,7 +418,7 @@ export default function CourierTest() {
         </form>
       </s-box>
 
-      {/* Steadfast order form */}
+      {/* Steadfast order form (unchanged) */}
       <s-box background="soft" padding="base" borderRadius="base">
         <s-heading level="3">Create Steadfast Test Order</s-heading>
         <form onSubmit={handleSteadfastSubmit}>
