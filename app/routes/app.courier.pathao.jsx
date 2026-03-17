@@ -7,7 +7,7 @@ import axios from "axios";
 
 // ---------- Loader ----------
 export async function loader({ request }) {
-    console.log("prisma before action:", prisma);
+    // console.log("prisma before action:", prisma);
   if (!prisma) {
     throw new Error("prisma is undefined");
   }
