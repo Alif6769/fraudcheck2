@@ -17,6 +17,7 @@ export default function CourierLayout() {
     { to: "welcome", label: "Welcome" },
     { to: "pathao", label: "Pathao" },
     { to: "steadfast", label: "Steadfast" },
+    { to: "test", label: "Test" },
   ];
 
   return (
