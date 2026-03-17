@@ -148,7 +148,7 @@ export async function action({ request }) {
       JSON.stringify({ 
         success: true, 
         encrypted: encryptedCredentials,
-        stores: fullCredentials.stores // send stores back so frontend can show them
+        stores: fullCredentials.stores // send stores back so frontend can show themm
       }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
