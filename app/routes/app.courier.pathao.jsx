@@ -23,25 +23,22 @@ export async function loader({ request }) {
 // ---------- Component ----------
 export default function PathaoDashboard() {
   const { unfulfilledOrders, shopDomain } = useLoaderData();
+  console.log("Component unfulfilledOrders:", unfulfilledOrders);
 
   const handleSync = () => {
-    window.location.reload(); // simple sync – reloads the page
+    window.location.reload();
   };
 
   return (
-    <s-stack gap="base">
-      <s-heading level="2">Pathao Courier – Unfulfilled Orders</s-heading>
-      <s-text>Shop: {shopDomain}</s-text>
+    <div style={{ padding: '20px' }}>
+      <h2>Pathao Courier – Unfulfilled Orders</h2>
+      <p>Shop: {shopDomain}</p>
 
-      {/* Sync button */}
-      <s-stack direction="inline" gap="small">
-        <s-button onClick={handleSync}>Sync Orders</s-button>
-      </s-stack>
+      <button onClick={handleSync}>Sync Orders</button>
 
-      {/* Orders table */}
-      <s-box background="base" border="base" borderRadius="base" padding="base">
-        <s-heading level="3">Unfulfilled Orders</s-heading>
-        <s-table>
+      <div style={{ marginTop: '20px', border: '1px solid #ccc', padding: '10px' }}>
+        <h3>Unfulfilled Orders</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
               <th>Order Name</th>
@@ -54,9 +51,7 @@ export default function PathaoDashboard() {
           <tbody>
             {unfulfilledOrders.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ textAlign: "center" }}>
-                  No unfulfilled orders found.
-                </td>
+                <td colSpan="5" style={{ textAlign: "center" }}>No unfulfilled orders found.</td>
               </tr>
             ) : (
               unfulfilledOrders.map((order) => (
@@ -70,8 +65,8 @@ export default function PathaoDashboard() {
               ))
             )}
           </tbody>
-        </s-table>
-      </s-box>
-    </s-stack>
+        </table>
+      </div>
+    </div>
   );
 }
