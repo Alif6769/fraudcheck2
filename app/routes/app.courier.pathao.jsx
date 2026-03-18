@@ -335,7 +335,6 @@ export default function PathaoDashboard() {
       }
 
       try {
-        // Use a promise to wrap fetcher submit – we'll use fetch directly here
         const response = await fetch("/app/courier/pathao", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -346,6 +345,14 @@ export default function PathaoDashboard() {
             selectedStoreId: selectedStore,
           }),
         });
+
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          // Server returned HTML – read it as text and show snippet
+          const text = await response.text();
+          throw new Error(`Server returned ${response.status} (not JSON): ${text.substring(0, 200)}`);
+        }
+
         const data = await response.json();
         results.push({
           orderName: order.orderName,
