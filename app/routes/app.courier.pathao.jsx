@@ -131,22 +131,55 @@ export async function action({ request }) {
       return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
     }
 
+    // ---------- Clean phone number ----------
+    let phone = order.shippingPhone || order.contactPhone || "";
+    // Remove all non‑digit characters
+    phone = phone.replace(/\D/g, "");
+
+    if (phone.length >= 11) {
+        // Take the last 11 digits (if more than 11, use the last 11)
+        phone = phone.slice(-11);
+    } else if (phone.length === 10) {
+        // Add a leading zero
+        phone = "0" + phone;
+    } else {
+        console.warn(`Phone number for order ${order.orderName} has unexpected length: ${phone}`);
+    }
+
+    // ---------- Clean address ----------
+    let address = order.shippingAddress || "";
+    try {
+      // Try to parse if it's a JSON string (from Shopify)
+      const addrObj = JSON.parse(address);
+      // Build a simple address string from common fields
+      const parts = [
+        addrObj.address1,
+        addrObj.address2,
+        addrObj.city,
+        addrObj.province,
+        addrObj.country,
+      ].filter(Boolean);
+      address = parts.join(", ");
+    } catch {
+      // Already a plain string – keep as is
+    }
+
     const storeId = selectedStoreId || creds.storeId;
     if (!storeId) {
       return new Response(JSON.stringify({ error: "No store selected" }), { status: 400 });
     }
 
-    // Prepare payload for Pathao
+    // Prepare payload with cleaned data
     const payload = {
       store_id: parseInt(storeId),
       merchant_order_id: order.orderName,
       recipient_name: order.firstName + " " + order.lastName,
-      recipient_phone: order.shippingPhone || order.contactPhone,
-      recipient_address: order.shippingAddress || "",
-      delivery_type: 48, // Normal
-      item_type: 2,      // Parcel
-      item_quantity: 1,  // You may want to calculate from products
-      item_weight: 0.5,  // Default; could be made configurable
+      recipient_phone: phone,                     // cleaned phone
+      recipient_address: address,                  // cleaned address
+      delivery_type: 48,
+      item_type: 2,
+      item_quantity: 1,
+      item_weight: 0.5,
       amount_to_collect: parseFloat(codAmount) || parseFloat(order.totalPrice),
       item_description: "Order from " + order.orderName,
     };
