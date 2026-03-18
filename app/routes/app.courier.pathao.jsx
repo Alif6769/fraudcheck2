@@ -1,7 +1,10 @@
 // app/routes/app.courier.pathao.jsx
-import { useLoaderData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
+import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { decrypt } from "../../utils/encryption.js";
+import axios from "axios";
 
 // ---------- Loader ----------
 export async function loader({ request }) {
@@ -14,96 +17,359 @@ export async function loader({ request }) {
     orderBy: { orderTime: "desc" },
   });
 
-  console.log(
-    `shop domain in pathao ${shopDomain}, total unfulfilled orders ${unfulfilledOrders.length}`
+  // Fetch Pathao service and credentials
+  const pathaoService = await prisma.courierService.findUnique({
+    where: { name: "pathao" },
+  });
+  if (!pathaoService) {
+    throw new Error("Pathao courier service not found in database");
+  }
+  const creds = await prisma.shopCourierCredentials.findUnique({
+    where: {
+      shopDomain_courierServiceId: {
+        shopDomain,
+        courierServiceId: pathaoService.id,
+      },
+    },
+  });
+
+  // Decrypt credentials to get store list (if any)
+  let stores = [];
+  let defaultStoreId = null;
+  if (creds) {
+    const full = JSON.parse(decrypt(creds.credentials));
+    stores = full.stores || [];
+    defaultStoreId = creds.storeId;
+  }
+
+  // For each order, get the count of existing shipments and hold status
+  const ordersWithMeta = await Promise.all(
+    unfulfilledOrders.map(async (order) => {
+      const shipmentCount = await prisma.courierShipment.count({
+        where: { orderName: order.orderName, courierName: "pathao" },
+      });
+      const hold = await prisma.courierOrderHold.findUnique({
+        where: {
+          orderName_courierName: {
+            orderName: order.orderName,
+            courierName: "pathao",
+          },
+        },
+      });
+      return {
+        ...order,
+        shipmentCount,
+        isHeld: !!hold,
+      };
+    })
   );
 
-  return { unfulfilledOrders, shopDomain };
+  console.log(`shop domain in pathao ${shopDomain}, total unfulfilled orders ${unfulfilledOrders.length}`);
+
+  return {
+    orders: ordersWithMeta,
+    shopDomain,
+    stores,
+    defaultStoreId,
+    credentialsConfigured: !!creds,
+  };
+}
+
+// ---------- Action ----------
+export async function action({ request }) {
+  const { session } = await authenticate.admin(request);
+  const shopDomain = session.shop;
+  const formData = await request.json();
+  const { actionType, orderName, codAmount, selectedStoreId } = formData;
+
+  // Get Pathao service and credentials
+  const pathaoService = await prisma.courierService.findUnique({
+    where: { name: "pathao" },
+  });
+  const creds = await prisma.shopCourierCredentials.findUnique({
+    where: {
+      shopDomain_courierServiceId: {
+        shopDomain,
+        courierServiceId: pathaoService.id,
+      },
+    },
+  });
+  if (!creds) {
+    return new Response(JSON.stringify({ error: "Pathao not configured" }), { status: 400 });
+  }
+
+  const accessToken = decrypt(creds.accessToken);
+
+  if (actionType === "send") {
+    // Fetch the order from UnfulfilledOrder
+    const order = await prisma.unfulfilledOrder.findUnique({
+      where: { orderName },
+    });
+    if (!order) {
+      return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
+    }
+
+    const storeId = selectedStoreId || creds.storeId;
+    if (!storeId) {
+      return new Response(JSON.stringify({ error: "No store selected" }), { status: 400 });
+    }
+
+    // Prepare payload for Pathao
+    const payload = {
+      store_id: parseInt(storeId),
+      merchant_order_id: order.orderName,
+      recipient_name: order.firstName + " " + order.lastName,
+      recipient_phone: order.shippingPhone || order.contactPhone,
+      recipient_address: order.shippingAddress || "",
+      delivery_type: 48, // Normal
+      item_type: 2,      // Parcel
+      item_quantity: 1,  // You may want to calculate from products
+      item_weight: 0.5,  // Default; could be made configurable
+      amount_to_collect: parseFloat(codAmount) || parseFloat(order.totalPrice),
+      item_description: "Order from " + order.orderName,
+    };
+
+    try {
+      const response = await axios.post(
+        "https://api-hermes.pathao.com/aladdin/api/v1/orders",
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (response.data.code === 200) {
+        const consignmentId = response.data.data.consignment_id;
+        const trackingLink = `https://merchant.pathao.com/tracking?consignment_id=${consignmentId}&phone=${payload.recipient_phone}`;
+
+        // Create shipment record
+        await prisma.courierShipment.create({
+          data: {
+            orderName,
+            courierName: "pathao",
+            consignmentId,
+            trackingLink,
+            status: response.data.data.order_status,
+            response: response.data,
+          },
+        });
+
+        // Remove any existing hold
+        await prisma.courierOrderHold.deleteMany({
+          where: { orderName, courierName: "pathao" },
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, consignmentId, trackingLink }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      } else {
+        throw new Error(response.data.message || "Pathao order failed");
+      }
+    } catch (error) {
+      console.error("Pathao send error:", error);
+      return new Response(
+        JSON.stringify({ error: error.message || "Failed to send order" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  } else if (actionType === "hold") {
+    // Create hold record
+    await prisma.courierOrderHold.upsert({
+      where: {
+        orderName_courierName: { orderName, courierName: "pathao" },
+      },
+      update: {},
+      create: {
+        orderName,
+        courierName: "pathao",
+      },
+    });
+    return new Response(JSON.stringify({ success: true, held: true }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  } else if (actionType === "unhold") {
+    // Remove hold
+    await prisma.courierOrderHold.deleteMany({
+      where: { orderName, courierName: "pathao" },
+    });
+    return new Response(JSON.stringify({ success: true, held: false }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
 }
 
 // ---------- Component ----------
 export default function PathaoDashboard() {
-  const { unfulfilledOrders, shopDomain } = useLoaderData();
-  console.log("Component unfulfilledOrders:", unfulfilledOrders);
+  const { orders, shopDomain, stores, defaultStoreId, credentialsConfigured } = useLoaderData();
+  const fetcher = useFetcher();
+  const [selectedStore, setSelectedStore] = useState(defaultStoreId || "");
+  const [codInputs, setCodInputs] = useState({});
 
   const handleSync = () => {
-    // Simple sync: reloads the page and triggers loader again
     window.location.reload();
   };
 
+  const handleSend = (orderName, defaultCod) => {
+    const cod = codInputs[orderName] !== undefined ? codInputs[orderName] : defaultCod;
+    fetcher.submit(
+      {
+        actionType: "send",
+        orderName,
+        codAmount: cod,
+        selectedStoreId: selectedStore,
+      },
+      { method: "post", encType: "application/json" }
+    );
+  };
+
+  const handleHold = (orderName, currentlyHeld) => {
+    fetcher.submit(
+      {
+        actionType: currentlyHeld ? "unhold" : "hold",
+        orderName,
+      },
+      { method: "post", encType: "application/json" }
+    );
+  };
+
+  if (!credentialsConfigured) {
+    return (
+      <s-page heading="Pathao Courier" inlineSize="large">
+        <s-section>
+          <s-box background="critical" padding="base" borderRadius="base">
+            <s-heading level="3">Pathao Not Configured</s-heading>
+            <s-text>
+              Please configure Pathao credentials in the welcome page first.
+            </s-text>
+          </s-box>
+        </s-section>
+      </s-page>
+    );
+  }
+
   return (
-    <s-page heading="Pathao Courier – Unfulfilled Orders">
+    <s-page heading="Pathao Courier – Unfulfilled Orders" inlineSize="large">
       <s-section>
         <s-stack gap="base">
-          {/* Shop info */}
           <s-text>Shop: {shopDomain}</s-text>
 
-          {/* Sync button row */}
+          {/* Store selector (if multiple stores) */}
+          {stores.length > 1 && (
+            <s-box background="soft" padding="base" borderRadius="base">
+              <s-stack direction="inline" gap="small" align="center">
+                <label>Select Pickup Store:</label>
+                <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)}>
+                  {stores.map((store) => (
+                    <option key={store.store_id} value={store.store_id}>
+                      {store.store_name} (ID: {store.store_id})
+                    </option>
+                  ))}
+                </select>
+              </s-stack>
+            </s-box>
+          )}
+
+          {/* Sync button */}
           <s-stack direction="inline" gap="small">
             <s-button onClick={handleSync}>Sync Orders</s-button>
           </s-stack>
 
-          {/* Unfulfilled orders card */}
-          <s-box
-            background="base"
-            border="base"
-            borderRadius="base"
-            padding="base"
-          >
-            <s-heading accessibilityRole="heading">
-              Unfulfilled Orders
-            </s-heading>
-
+          {/* Orders table */}
+          <s-box background="base" border="base" borderRadius="base" padding="base">
+            <s-heading accessibilityRole="heading">Unfulfilled Orders</s-heading>
             <s-table variant="auto">
               <s-table-header-row>
-                <s-table-header listSlot="primary">
-                  Order Name
-                </s-table-header>
-                <s-table-header format="currency">
-                  Total Price
-                </s-table-header>
-                <s-table-header listSlot="secondary">
-                  Customer Name
-                </s-table-header>
+                <s-table-header>Actions</s-table-header> {/* For Send/Hold */}
+                <s-table-header>Times Sent</s-table-header>
+                <s-table-header listSlot="primary">Order Name</s-table-header>
+                <s-table-header format="currency">Total Price</s-table-header>
+                <s-table-header listSlot="secondary">Customer Name</s-table-header>
                 <s-table-header>Shipping Phone</s-table-header>
                 <s-table-header>Shipping Address</s-table-header>
               </s-table-header-row>
 
               <s-table-body>
-                {unfulfilledOrders.length === 0 ? (
+                {orders.length === 0 ? (
                   <s-table-row>
-                    {/* Message cell */}
-                    <s-table-cell>
-                      No unfulfilled orders found.
-                    </s-table-cell>
-                    {/* Empty cells to keep column count consistent */}
-                    <s-table-cell />
-                    <s-table-cell />
-                    <s-table-cell />
-                    <s-table-cell />
+                    <s-table-cell colSpan={7}>No unfulfilled orders found.</s-table-cell>
                   </s-table-row>
                 ) : (
-                  unfulfilledOrders.map((order) => (
-                    <s-table-row key={order.orderName}>
-                      <s-table-cell>{order.orderName}</s-table-cell>
-                      <s-table-cell>
-                        {parseFloat(order.totalPrice).toFixed(2)}
-                      </s-table-cell>
-                      <s-table-cell>
-                        {order.firstName} {order.lastName}
-                      </s-table-cell>
-                      <s-table-cell>
-                        {order.shippingPhone || order.contactPhone}
-                      </s-table-cell>
-                      <s-table-cell>
-                        {order.shippingAddress || "-"}
-                      </s-table-cell>
-                    </s-table-row>
-                  ))
+                  orders.map((order) => {
+                    const defaultCod = parseFloat(order.totalPrice);
+                    const codValue = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
+                    return (
+                      <s-table-row key={order.orderName}>
+                        {/* Actions column */}
+                        <s-table-cell>
+                          <s-stack direction="inline" gap="small">
+                            <s-button
+                              size="small"
+                              onClick={() => handleSend(order.orderName, defaultCod)}
+                              disabled={order.isHeld || fetcher.state !== "idle"}
+                            >
+                              Send
+                            </s-button>
+                            <s-button
+                              size="small"
+                              onClick={() => handleHold(order.orderName, order.isHeld)}
+                              disabled={fetcher.state !== "idle"}
+                            >
+                              {order.isHeld ? "Unhold" : "Hold"}
+                            </s-button>
+                          </s-stack>
+                        </s-table-cell>
+                        {/* Times Sent */}
+                        <s-table-cell>{order.shipmentCount}</s-table-cell>
+                        <s-table-cell>{order.orderName}</s-table-cell>
+                        <s-table-cell>
+                          <s-stack direction="inline" gap="small">
+                            <span>${defaultCod.toFixed(2)}</span>
+                            <input
+                              type="number"
+                              value={codValue}
+                              onChange={(e) =>
+                                setCodInputs({ ...codInputs, [order.orderName]: e.target.value })
+                              }
+                              disabled={order.isHeld}
+                              style={{ width: "80px" }}
+                            />
+                          </s-stack>
+                        </s-table-cell>
+                        <s-table-cell>
+                          {order.firstName} {order.lastName}
+                        </s-table-cell>
+                        <s-table-cell>{order.shippingPhone || order.contactPhone}</s-table-cell>
+                        <s-table-cell>{order.shippingAddress || "-"}</s-table-cell>
+                      </s-table-row>
+                    );
+                  })
                 )}
               </s-table-body>
             </s-table>
           </s-box>
+
+          {/* Response status from fetcher */}
+          {fetcher.data && (
+            <s-box
+              background={fetcher.data.success ? "success" : "critical"}
+              padding="base"
+              borderRadius="base"
+              border="base"
+            >
+              <s-heading level="3">
+                {fetcher.data.success ? "✅ Success" : "❌ Error"}
+              </s-heading>
+              <pre style={{ whiteSpace: "pre-wrap" }}>
+                {JSON.stringify(fetcher.data, null, 2)}
+              </pre>
+            </s-box>
+          )}
         </s-stack>
       </s-section>
     </s-page>
