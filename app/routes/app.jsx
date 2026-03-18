@@ -3,6 +3,8 @@ import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
+// ✅ Polaris translations
+import enTranslations from "@shopify/polaris/locales/en.json";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -15,7 +17,7 @@ export default function App() {
   const { apiKey } = useLoaderData();
 
   return (
-    <AppProvider embedded apiKey={apiKey}>
+    <AppProvider embedded apiKey={apiKey} i18n={enTranslations}>
       {/* All Polaris layout & content comes from child routes */}
       <Outlet />
     </AppProvider>
