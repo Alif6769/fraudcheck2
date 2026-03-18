@@ -2,6 +2,7 @@
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import {elements} from '@shopify/polaris-app-home';
 
 // ---------- Loader ----------
 export async function loader({ request }) {
@@ -28,45 +29,75 @@ export default function PathaoDashboard() {
   const handleSync = () => {
     window.location.reload();
   };
+  const {
+     Page,
+     Section,
+     Stack,
+     Heading,
+     Text,
+     Box,
+     Button,
+     Table,
+     TableHeaderRow,
+     TableHeader,
+     TableBody,
+     TableRow,
+     TableCell,
+   } = elements;
 
   return (
-    <div style={{ padding: '20px' }}>
-      <h2>Pathao Courier – Unfulfilled Orders</h2>
-      <p>Shop: {shopDomain}</p>
+       <Page heading="Pathao Courier – Unfulfilled Orders">
+         <Section>
+           <Stack gap="base">
+             <Text>Shop: {shopDomain}</Text>
 
-      <button onClick={handleSync}>Sync Orders</button>
+             <Stack direction="inline" gap="small">
+               <Button onClick={handleSync}>Sync Orders</Button>
+             </Stack>
 
-      <div style={{ marginTop: '20px', border: '1px solid #ccc', padding: '10px' }}>
-        <h3>Unfulfilled Orders</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th>Order Name</th>
-              <th>Total Price</th>
-              <th>Customer Name</th>
-              <th>Shipping Phone</th>
-              <th>Shipping Address</th>
-            </tr>
-          </thead>
-          <tbody>
-            {unfulfilledOrders.length === 0 ? (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center" }}>No unfulfilled orders found.</td>
-              </tr>
-            ) : (
-              unfulfilledOrders.map((order) => (
-                <tr key={order.orderName}>
-                  <td>{order.orderName}</td>
-                  <td>${parseFloat(order.totalPrice).toFixed(2)}</td>
-                  <td>{order.firstName} {order.lastName}</td>
-                  <td>{order.shippingPhone || order.contactPhone}</td>
-                  <td>{order.shippingAddress || "-"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+             <Box background="base" border="base" borderRadius="base" padding="base">
+               <Heading>Unfulfilled Orders</Heading>
+
+               <Table variant="auto">
+                 <TableHeaderRow>
+                   <TableHeader listSlot="primary">Order Name</TableHeader>
+                   <TableHeader format="currency">Total Price</TableHeader>
+                   <TableHeader listSlot="secondary">Customer Name</TableHeader>
+                   <TableHeader>Shipping Phone</TableHeader>
+                   <TableHeader>Shipping Address</TableHeader>
+                 </TableHeaderRow>
+                 <TableBody>
+                   {unfulfilledOrders.length === 0 ? (
+                     <TableRow>
+                       <TableCell>No unfulfilled orders found.</TableCell>
+                       <TableCell />
+                       <TableCell />
+                       <TableCell />
+                       <TableCell />
+                     </TableRow>
+                   ) : (
+                     unfulfilledOrders.map((order) => (
+                       <TableRow key={order.orderName}>
+                         <TableCell>{order.orderName}</TableCell>
+                         <TableCell>
+                           {parseFloat(order.totalPrice).toFixed(2)}
+                         </TableCell>
+                         <TableCell>
+                           {order.firstName} {order.lastName}
+                         </TableCell>
+                         <TableCell>
+                           {order.shippingPhone || order.contactPhone}
+                         </TableCell>
+                         <TableCell>
+                           {order.shippingAddress || '-'}</TableCell>
+                       </TableRow>
+                     ))
+                   )}
+                 </TableBody>
+               </Table>
+             </Box>
+           </Stack>
+         </Section>
+       </Page>
+     );
+   }
