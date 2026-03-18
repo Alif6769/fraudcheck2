@@ -338,6 +338,7 @@ export default function PathaoDashboard() {
         const response = await fetch("/app/courier/pathao", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: 'include', // 👈 this sends the session cookie
           body: JSON.stringify({
             actionType: "send",
             orderName: order.orderName,
