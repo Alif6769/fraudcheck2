@@ -11,8 +11,14 @@ export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const shopDomain = session.shop;
 
-  // Fetch unfulfilled orders for this shop
+  // Fetch unfulfilled orders
   const unfulfilledOrders = await prisma.unfulfilledOrder.findMany({
+    where: { shop: shopDomain },
+    orderBy: { orderTime: "desc" },
+  });
+
+  // Fetch cancelled orders
+  const cancelledOrders = await prisma.cancelledOrder.findMany({
     where: { shop: shopDomain },
     orderBy: { orderTime: "desc" },
   });
@@ -42,7 +48,7 @@ export async function loader({ request }) {
     defaultStoreId = creds.storeId;
   }
 
-  // For each unfulfilled order, get shipment count, hold status, and the latest shipment (if any)
+  // For each unfulfilled order, get shipment count, hold status, and latest shipment
   const ordersWithMeta = await Promise.all(
     unfulfilledOrders.map(async (order) => {
       const shipmentCount = await prisma.courierShipment.count({
@@ -56,7 +62,6 @@ export async function loader({ request }) {
           },
         },
       });
-      // Get the most recent shipment for this order (if any)
       const latestShipment = await prisma.courierShipment.findFirst({
         where: { orderName: order.orderName, courierName: "pathao" },
         orderBy: { createdAt: "desc" },
@@ -72,10 +77,10 @@ export async function loader({ request }) {
     })
   );
 
-  // Fetch all orders that have been sent (i.e., have at least one CourierShipment)
+  // Fetch all sent orders
   const sentOrders = await prisma.courierShipment.findMany({
     where: { courierName: "pathao" },
-    include: { order: true }, // includes the related Order data
+    include: { order: true },
     orderBy: { createdAt: "desc" },
   });
 
@@ -83,6 +88,7 @@ export async function loader({ request }) {
 
   return {
     unfulfilledOrders: ordersWithMeta,
+    cancelledOrders,
     sentOrders,
     shopDomain,
     stores,
@@ -222,28 +228,39 @@ export async function action({ request }) {
 
 // ---------- Component ----------
 export default function PathaoDashboard() {
-  const { unfulfilledOrders, sentOrders, shopDomain, stores, defaultStoreId, credentialsConfigured } = useLoaderData();
+  const { unfulfilledOrders, cancelledOrders, sentOrders, shopDomain, stores, defaultStoreId, credentialsConfigured } = useLoaderData();
   const fetcher = useFetcher();
   const [selectedStore, setSelectedStore] = useState(defaultStoreId || "");
   const [codInputs, setCodInputs] = useState({});
-  const [activeTab, setActiveTab] = useState("unfulfilled"); // "unfulfilled", "fulfilled", "sent"
+  const [codErrors, setCodErrors] = useState({}); // for validation warnings
+  const [activeTab, setActiveTab] = useState("unfulfilled");
   const [searchOrderName, setSearchOrderName] = useState("");
   const [searchedOrder, setSearchedOrder] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
 
   const handleSync = () => {
-    // Placeholder: will implement later
     alert("Sync Unfulfilled clicked");
   };
 
   const handleSendAll = () => {
-    // Placeholder: will implement later
     alert("Send All clicked");
+  };
+
+  const handleCodChange = (orderName, value) => {
+    // Validate: only digits allowed
+    const isValid = /^\d*\.?\d*$/.test(value); // allows decimals
+    setCodInputs({ ...codInputs, [orderName]: value });
+    setCodErrors({ ...codErrors, [orderName]: isValid ? null : "Only numbers allowed" });
   };
 
   const handleSend = (orderName, defaultCod) => {
     const cod = codInputs[orderName] !== undefined ? codInputs[orderName] : defaultCod;
+    // Validate before sending
+    if (isNaN(parseFloat(cod))) {
+      setCodErrors({ ...codErrors, [orderName]: "Invalid number" });
+      return;
+    }
     fetcher.submit(
       {
         actionType: "send",
@@ -253,6 +270,12 @@ export default function PathaoDashboard() {
       },
       { method: "post", encType: "application/json" }
     );
+  };
+
+  const handleSendCancelled = (orderName, defaultCod) => {
+    if (window.confirm(`Are you sure you want to send cancelled order ${orderName}?`)) {
+      handleSend(orderName, defaultCod);
+    }
   };
 
   const handleHold = (orderName, currentlyHeld) => {
@@ -322,24 +345,9 @@ export default function PathaoDashboard() {
 
           {/* Tab Navigation */}
           <s-stack direction="inline" gap="small">
-            <s-button
-              onClick={() => setActiveTab("unfulfilled")}
-              variant={activeTab === "unfulfilled" ? "primary" : "secondary"}
-            >
-              Unfulfilled
-            </s-button>
-            <s-button
-              onClick={() => setActiveTab("fulfilled")}
-              variant={activeTab === "fulfilled" ? "primary" : "secondary"}
-            >
-              Fulfilled (Search)
-            </s-button>
-            <s-button
-              onClick={() => setActiveTab("sent")}
-              variant={activeTab === "sent" ? "primary" : "secondary"}
-            >
-              Sent Orders
-            </s-button>
+            <s-button onClick={() => setActiveTab("unfulfilled")} variant={activeTab === "unfulfilled" ? "primary" : "secondary"}>Unfulfilled</s-button>
+            <s-button onClick={() => setActiveTab("fulfilled")} variant={activeTab === "fulfilled" ? "primary" : "secondary"}>Fulfilled (Search)</s-button>
+            <s-button onClick={() => setActiveTab("sent")} variant={activeTab === "sent" ? "primary" : "secondary"}>Sent Orders</s-button>
           </s-stack>
 
           {/* Unfulfilled Tab */}
@@ -350,47 +358,34 @@ export default function PathaoDashboard() {
                 <s-button onClick={handleSendAll}>Send All</s-button>
               </s-stack>
 
+              {/* Unfulfilled Orders Table */}
               <s-box background="base" border="base" borderRadius="base" padding="base">
-                <s-heading accessibilityRole="heading">Unfulfilled Orders</s-heading>
+                <s-heading>Unfulfilled Orders</s-heading>
                 <s-table variant="auto">
                   <s-table-header-row>
                     <s-table-header>Actions</s-table-header>
                     <s-table-header>Times Sent</s-table-header>
-                    <s-table-header listSlot="primary">Order Name</s-table-header>
-                    <s-table-header format="currency">Total Price</s-table-header>
-                    <s-table-header listSlot="secondary">Customer Name</s-table-header>
+                    <s-table-header>Order Name</s-table-header>
+                    <s-table-header>Total Price</s-table-header>
+                    <s-table-header>Customer Name</s-table-header>
                     <s-table-header>Shipping Phone</s-table-header>
                     <s-table-header>Consignment ID</s-table-header>
                     <s-table-header>Status</s-table-header>
                   </s-table-header-row>
-
                   <s-table-body>
                     {unfulfilledOrders.length === 0 ? (
-                      <s-table-row>
-                        <s-table-cell colSpan={8}>No unfulfilled orders found.</s-table-cell>
-                      </s-table-row>
+                      <s-table-row><s-table-cell colSpan={8}>No unfulfilled orders found.</s-table-cell></s-table-row>
                     ) : (
                       unfulfilledOrders.map((order) => {
                         const defaultCod = parseFloat(order.totalPrice);
                         const codValue = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
+                        const error = codErrors[order.orderName];
                         return (
                           <s-table-row key={order.orderName}>
                             <s-table-cell>
                               <s-stack direction="inline" gap="small">
-                                <s-button
-                                  size="small"
-                                  onClick={() => handleSend(order.orderName, defaultCod)}
-                                  disabled={order.isHeld || fetcher.state !== "idle"}
-                                >
-                                  Send
-                                </s-button>
-                                <s-button
-                                  size="small"
-                                  onClick={() => handleHold(order.orderName, order.isHeld)}
-                                  disabled={fetcher.state !== "idle"}
-                                >
-                                  {order.isHeld ? "Unhold" : "Hold"}
-                                </s-button>
+                                <s-button size="small" onClick={() => handleSend(order.orderName, defaultCod)} disabled={order.isHeld || fetcher.state !== "idle"}>Send</s-button>
+                                <s-button size="small" onClick={() => handleHold(order.orderName, order.isHeld)} disabled={fetcher.state !== "idle"}>{order.isHeld ? "Unhold" : "Hold"}</s-button>
                               </s-stack>
                             </s-table-cell>
                             <s-table-cell>{order.shipmentCount}</s-table-cell>
@@ -398,23 +393,73 @@ export default function PathaoDashboard() {
                             <s-table-cell>
                               <s-stack direction="inline" gap="small">
                                 <span>${defaultCod.toFixed(2)}</span>
-                                <input
-                                  type="number"
-                                  value={codValue}
-                                  onChange={(e) =>
-                                    setCodInputs({ ...codInputs, [order.orderName]: e.target.value })
-                                  }
-                                  disabled={order.isHeld}
-                                  style={{ width: "80px" }}
-                                />
+                                <div>
+                                  <input
+                                    type="text"
+                                    value={codValue}
+                                    onChange={(e) => handleCodChange(order.orderName, e.target.value)}
+                                    disabled={order.isHeld}
+                                    style={{ width: "80px" }}
+                                  />
+                                  {error && <span style={{ color: "red", fontSize: "0.8em" }}>{error}</span>}
+                                </div>
                               </s-stack>
                             </s-table-cell>
-                            <s-table-cell>
-                              {order.firstName} {order.lastName}
-                            </s-table-cell>
+                            <s-table-cell>{order.firstName} {order.lastName}</s-table-cell>
                             <s-table-cell>{order.shippingPhone || order.contactPhone}</s-table-cell>
                             <s-table-cell>{order.consignmentId || "-"}</s-table-cell>
                             <s-table-cell>{order.shipmentStatus || "-"}</s-table-cell>
+                          </s-table-row>
+                        );
+                      })
+                    )}
+                  </s-table-body>
+                </s-table>
+              </s-box>
+
+              {/* Cancelled Orders Table */}
+              <s-box background="base" border="base" borderRadius="base" padding="base" marginBlockStart="base">
+                <s-heading>Cancelled Orders</s-heading>
+                <s-table variant="auto">
+                  <s-table-header-row>
+                    <s-table-header>Actions</s-table-header>
+                    <s-table-header>Order Name</s-table-header>
+                    <s-table-header>Total Price</s-table-header>
+                    <s-table-header>Customer Name</s-table-header>
+                    <s-table-header>Shipping Phone</s-table-header>
+                    <s-table-header>Cancelled At</s-table-header>
+                  </s-table-header-row>
+                  <s-table-body>
+                    {cancelledOrders.length === 0 ? (
+                      <s-table-row><s-table-cell colSpan={6}>No cancelled orders found.</s-table-cell></s-table-row>
+                    ) : (
+                      cancelledOrders.map((order) => {
+                        const defaultCod = parseFloat(order.totalPrice);
+                        const codValue = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
+                        const error = codErrors[order.orderName];
+                        return (
+                          <s-table-row key={order.orderName}>
+                            <s-table-cell>
+                              <s-button size="small" onClick={() => handleSendCancelled(order.orderName, defaultCod)} disabled={fetcher.state !== "idle"}>Send</s-button>
+                            </s-table-cell>
+                            <s-table-cell>{order.orderName}</s-table-cell>
+                            <s-table-cell>
+                              <s-stack direction="inline" gap="small">
+                                <span>${defaultCod.toFixed(2)}</span>
+                                <div>
+                                  <input
+                                    type="text"
+                                    value={codValue}
+                                    onChange={(e) => handleCodChange(order.orderName, e.target.value)}
+                                    style={{ width: "80px" }}
+                                  />
+                                  {error && <span style={{ color: "red", fontSize: "0.8em" }}>{error}</span>}
+                                </div>
+                              </s-stack>
+                            </s-table-cell>
+                            <s-table-cell>{order.firstName} {order.lastName}</s-table-cell>
+                            <s-table-cell>{order.shippingPhone || order.contactPhone}</s-table-cell>
+                            <s-table-cell>{new Date(order.cancelledAt).toLocaleString()}</s-table-cell>
                           </s-table-row>
                         );
                       })
