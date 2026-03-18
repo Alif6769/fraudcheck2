@@ -13,6 +13,9 @@ export async function loader({ request }) {
     where: { shop: shopDomain },
     orderBy: { orderTime: "desc" },
   });
+  console.log(
+    `shop domain in pathao ${shopDomain}`
+  );
 
   return { unfulfilledOrders, shopDomain };
 }
