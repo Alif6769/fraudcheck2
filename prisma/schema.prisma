@@ -54,6 +54,7 @@ model Order {
   products        Json
   // new fields
   shipments       CourierShipment[]  // ← opposite field
+  hold            CourierOrderHold[]
   productIds      Json?
   source          String? // e.g., "web", "pos", etc.
   fraudReport     String? // full text report from FraudSpy
@@ -114,7 +115,7 @@ model CourierShipment {
   id             Int      @id @default(autoincrement())
   orderName      String   // references Order.orderName
   courierName    String   // "pathao" or "steadfast"
-  consignmentId  String
+  consignmentId  String?
   trackingCode   String?  // only for Steadfast
   trackingLink   String?
   status         String?  // order status from courier
@@ -125,6 +126,19 @@ model CourierShipment {
   order          Order    @relation(fields: [orderName], references: [orderName], onDelete: Cascade)
 
   @@map("courier_shipments")
+}
+
+model CourierOrderHold {
+  id          Int      @id @default(autoincrement())
+  orderName   String   // references Order.orderName
+  courierName String   // "pathao" or "steadfast"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  order       Order    @relation(fields: [orderName], references: [orderName], onDelete: Cascade)
+
+  @@unique([orderName, courierName])
+  @@map("courier_order_holds")
 }
 
 // Product table
