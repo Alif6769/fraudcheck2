@@ -323,51 +323,34 @@ export default function PathaoDashboard() {
     setSendingAll(true);
     setSendAllResults(null);
 
-    const results = [];
-    for (const order of ordersToSend) {
-      const defaultCod = parseFloat(order.totalPrice);
-      const cod = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
-
-      // Validate COD input
-      if (isNaN(parseFloat(cod))) {
-        results.push({ orderName: order.orderName, success: false, error: "Invalid COD" });
-        continue;
-      }
-
-      try {
-        const response = await fetch("/app/courier/pathao", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: 'include', // 👈 this sends the session cookie
-          body: JSON.stringify({
-            actionType: "send",
+    try {
+      const response = await fetch("/api/courier/send-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // send session cookie
+        body: JSON.stringify({
+          storeId: selectedStore,
+          orders: ordersToSend.map(order => ({
             orderName: order.orderName,
-            codAmount: cod,
-            selectedStoreId: selectedStore,
-          }),
-        });
+            codAmount: codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : parseFloat(order.totalPrice),
+          })),
+        }),
+      });
 
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          // Server returned HTML – read it as text and show snippet
-          const text = await response.text();
-          throw new Error(`Server returned ${response.status} (not JSON): ${text.substring(0, 200)}`);
-        }
-
-        const data = await response.json();
-        results.push({
-          orderName: order.orderName,
-          success: data.success,
-          consignmentId: data.consignmentId,
-          error: data.error,
-        });
-      } catch (error) {
-        results.push({ orderName: order.orderName, success: false, error: error.message });
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Server returned ${response.status} (not JSON): ${text.substring(0, 200)}`);
       }
-    }
 
-    setSendAllResults(results);
-    setSendingAll(false);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Send all failed");
+      setSendAllResults(data.results);
+    } catch (err) {
+      alert(`Send all error: ${err.message}`);
+    } finally {
+      setSendingAll(false);
+    }
   };
 
   const handleCodChange = (orderName, value) => {
