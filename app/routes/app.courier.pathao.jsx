@@ -42,7 +42,7 @@ export async function loader({ request }) {
     defaultStoreId = creds.storeId;
   }
 
-  // For each order, get the count of existing shipments and hold status
+  // For each unfulfilled order, get shipment count, hold status, and the latest shipment (if any)
   const ordersWithMeta = await Promise.all(
     unfulfilledOrders.map(async (order) => {
       const shipmentCount = await prisma.courierShipment.count({
@@ -56,18 +56,34 @@ export async function loader({ request }) {
           },
         },
       });
+      // Get the most recent shipment for this order (if any)
+      const latestShipment = await prisma.courierShipment.findFirst({
+        where: { orderName: order.orderName, courierName: "pathao" },
+        orderBy: { createdAt: "desc" },
+      });
       return {
         ...order,
         shipmentCount,
         isHeld: !!hold,
+        consignmentId: latestShipment?.consignmentId || null,
+        shipmentStatus: latestShipment?.status || null,
+        trackingLink: latestShipment?.trackingLink || null,
       };
     })
   );
 
+  // Fetch all orders that have been sent (i.e., have at least one CourierShipment)
+  const sentOrders = await prisma.courierShipment.findMany({
+    where: { courierName: "pathao" },
+    include: { order: true }, // includes the related Order data
+    orderBy: { createdAt: "desc" },
+  });
+
   console.log(`shop domain in pathao ${shopDomain}, total unfulfilled orders ${unfulfilledOrders.length}`);
 
   return {
-    orders: ordersWithMeta,
+    unfulfilledOrders: ordersWithMeta,
+    sentOrders,
     shopDomain,
     stores,
     defaultStoreId,
@@ -206,13 +222,24 @@ export async function action({ request }) {
 
 // ---------- Component ----------
 export default function PathaoDashboard() {
-  const { orders, shopDomain, stores, defaultStoreId, credentialsConfigured } = useLoaderData();
+  const { unfulfilledOrders, sentOrders, shopDomain, stores, defaultStoreId, credentialsConfigured } = useLoaderData();
   const fetcher = useFetcher();
   const [selectedStore, setSelectedStore] = useState(defaultStoreId || "");
   const [codInputs, setCodInputs] = useState({});
+  const [activeTab, setActiveTab] = useState("unfulfilled"); // "unfulfilled", "fulfilled", "sent"
+  const [searchOrderName, setSearchOrderName] = useState("");
+  const [searchedOrder, setSearchedOrder] = useState(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const handleSync = () => {
-    window.location.reload();
+    // Placeholder: will implement later
+    alert("Sync Unfulfilled clicked");
+  };
+
+  const handleSendAll = () => {
+    // Placeholder: will implement later
+    alert("Send All clicked");
   };
 
   const handleSend = (orderName, defaultCod) => {
@@ -238,6 +265,24 @@ export default function PathaoDashboard() {
     );
   };
 
+  const handleSearch = async () => {
+    if (!searchOrderName.trim()) return;
+    setSearchLoading(true);
+    setSearchError("");
+    setSearchedOrder(null);
+    try {
+      // Fetch order by name from the database (could be from UnfulfilledOrder or Order)
+      const response = await fetch(`/api/orders/by-name?name=${encodeURIComponent(searchOrderName)}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Order not found");
+      setSearchedOrder(data.order);
+    } catch (err) {
+      setSearchError(err.message);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
   if (!credentialsConfigured) {
     return (
       <s-page heading="Pathao Courier" inlineSize="large">
@@ -254,7 +299,7 @@ export default function PathaoDashboard() {
   }
 
   return (
-    <s-page heading="Pathao Courier – Unfulfilled Orders" inlineSize="large">
+    <s-page heading="Pathao Courier – Dashboard" inlineSize="large">
       <s-section>
         <s-stack gap="base">
           <s-text>Shop: {shopDomain}</s-text>
@@ -275,84 +320,200 @@ export default function PathaoDashboard() {
             </s-box>
           )}
 
-          {/* Sync button */}
+          {/* Tab Navigation */}
           <s-stack direction="inline" gap="small">
-            <s-button onClick={handleSync}>Sync Orders</s-button>
+            <s-button
+              onClick={() => setActiveTab("unfulfilled")}
+              variant={activeTab === "unfulfilled" ? "primary" : "secondary"}
+            >
+              Unfulfilled
+            </s-button>
+            <s-button
+              onClick={() => setActiveTab("fulfilled")}
+              variant={activeTab === "fulfilled" ? "primary" : "secondary"}
+            >
+              Fulfilled (Search)
+            </s-button>
+            <s-button
+              onClick={() => setActiveTab("sent")}
+              variant={activeTab === "sent" ? "primary" : "secondary"}
+            >
+              Sent Orders
+            </s-button>
           </s-stack>
 
-          {/* Orders table */}
-          <s-box background="base" border="base" borderRadius="base" padding="base">
-            <s-heading accessibilityRole="heading">Unfulfilled Orders</s-heading>
-            <s-table variant="auto">
-              <s-table-header-row>
-                <s-table-header>Actions</s-table-header> {/* For Send/Hold */}
-                <s-table-header>Times Sent</s-table-header>
-                <s-table-header listSlot="primary">Order Name</s-table-header>
-                <s-table-header format="currency">Total Price</s-table-header>
-                <s-table-header listSlot="secondary">Customer Name</s-table-header>
-                <s-table-header>Shipping Phone</s-table-header>
-                <s-table-header>Shipping Address</s-table-header>
-              </s-table-header-row>
+          {/* Unfulfilled Tab */}
+          {activeTab === "unfulfilled" && (
+            <s-stack gap="base">
+              <s-stack direction="inline" gap="small">
+                <s-button onClick={handleSync}>Sync Unfulfilled</s-button>
+                <s-button onClick={handleSendAll}>Send All</s-button>
+              </s-stack>
 
-              <s-table-body>
-                {orders.length === 0 ? (
-                  <s-table-row>
-                    <s-table-cell colSpan={7}>No unfulfilled orders found.</s-table-cell>
-                  </s-table-row>
-                ) : (
-                  orders.map((order) => {
-                    const defaultCod = parseFloat(order.totalPrice);
-                    const codValue = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
-                    return (
-                      <s-table-row key={order.orderName}>
-                        {/* Actions column */}
-                        <s-table-cell>
-                          <s-stack direction="inline" gap="small">
-                            <s-button
-                              size="small"
-                              onClick={() => handleSend(order.orderName, defaultCod)}
-                              disabled={order.isHeld || fetcher.state !== "idle"}
-                            >
-                              Send
-                            </s-button>
-                            <s-button
-                              size="small"
-                              onClick={() => handleHold(order.orderName, order.isHeld)}
-                              disabled={fetcher.state !== "idle"}
-                            >
-                              {order.isHeld ? "Unhold" : "Hold"}
-                            </s-button>
-                          </s-stack>
-                        </s-table-cell>
-                        {/* Times Sent */}
-                        <s-table-cell>{order.shipmentCount}</s-table-cell>
-                        <s-table-cell>{order.orderName}</s-table-cell>
-                        <s-table-cell>
-                          <s-stack direction="inline" gap="small">
-                            <span>${defaultCod.toFixed(2)}</span>
-                            <input
-                              type="number"
-                              value={codValue}
-                              onChange={(e) =>
-                                setCodInputs({ ...codInputs, [order.orderName]: e.target.value })
-                              }
-                              disabled={order.isHeld}
-                              style={{ width: "80px" }}
-                            />
-                          </s-stack>
-                        </s-table-cell>
-                        <s-table-cell>
-                          {order.firstName} {order.lastName}
-                        </s-table-cell>
-                        <s-table-cell>{order.shippingPhone || order.contactPhone}</s-table-cell>
-                        <s-table-cell>{order.shippingAddress || "-"}</s-table-cell>
+              <s-box background="base" border="base" borderRadius="base" padding="base">
+                <s-heading accessibilityRole="heading">Unfulfilled Orders</s-heading>
+                <s-table variant="auto">
+                  <s-table-header-row>
+                    <s-table-header>Actions</s-table-header>
+                    <s-table-header>Times Sent</s-table-header>
+                    <s-table-header listSlot="primary">Order Name</s-table-header>
+                    <s-table-header format="currency">Total Price</s-table-header>
+                    <s-table-header listSlot="secondary">Customer Name</s-table-header>
+                    <s-table-header>Shipping Phone</s-table-header>
+                    <s-table-header>Consignment ID</s-table-header>
+                    <s-table-header>Status</s-table-header>
+                  </s-table-header-row>
+
+                  <s-table-body>
+                    {unfulfilledOrders.length === 0 ? (
+                      <s-table-row>
+                        <s-table-cell colSpan={8}>No unfulfilled orders found.</s-table-cell>
                       </s-table-row>
-                    );
-                  })
-                )}
-              </s-table-body>
-            </s-table>
-          </s-box>
+                    ) : (
+                      unfulfilledOrders.map((order) => {
+                        const defaultCod = parseFloat(order.totalPrice);
+                        const codValue = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
+                        return (
+                          <s-table-row key={order.orderName}>
+                            <s-table-cell>
+                              <s-stack direction="inline" gap="small">
+                                <s-button
+                                  size="small"
+                                  onClick={() => handleSend(order.orderName, defaultCod)}
+                                  disabled={order.isHeld || fetcher.state !== "idle"}
+                                >
+                                  Send
+                                </s-button>
+                                <s-button
+                                  size="small"
+                                  onClick={() => handleHold(order.orderName, order.isHeld)}
+                                  disabled={fetcher.state !== "idle"}
+                                >
+                                  {order.isHeld ? "Unhold" : "Hold"}
+                                </s-button>
+                              </s-stack>
+                            </s-table-cell>
+                            <s-table-cell>{order.shipmentCount}</s-table-cell>
+                            <s-table-cell>{order.orderName}</s-table-cell>
+                            <s-table-cell>
+                              <s-stack direction="inline" gap="small">
+                                <span>${defaultCod.toFixed(2)}</span>
+                                <input
+                                  type="number"
+                                  value={codValue}
+                                  onChange={(e) =>
+                                    setCodInputs({ ...codInputs, [order.orderName]: e.target.value })
+                                  }
+                                  disabled={order.isHeld}
+                                  style={{ width: "80px" }}
+                                />
+                              </s-stack>
+                            </s-table-cell>
+                            <s-table-cell>
+                              {order.firstName} {order.lastName}
+                            </s-table-cell>
+                            <s-table-cell>{order.shippingPhone || order.contactPhone}</s-table-cell>
+                            <s-table-cell>{order.consignmentId || "-"}</s-table-cell>
+                            <s-table-cell>{order.shipmentStatus || "-"}</s-table-cell>
+                          </s-table-row>
+                        );
+                      })
+                    )}
+                  </s-table-body>
+                </s-table>
+              </s-box>
+            </s-stack>
+          )}
+
+          {/* Fulfilled Tab – Search by order name */}
+          {activeTab === "fulfilled" && (
+            <s-box background="soft" padding="base" borderRadius="base">
+              <s-heading level="3">Find Order by Name</s-heading>
+              <s-stack direction="inline" gap="small">
+                <input
+                  type="text"
+                  placeholder="Enter order name (e.g., #Mehwish3328)"
+                  value={searchOrderName}
+                  onChange={(e) => setSearchOrderName(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <s-button onClick={handleSearch} disabled={searchLoading}>
+                  {searchLoading ? "Searching..." : "Fetch Order"}
+                </s-button>
+              </s-stack>
+              {searchError && <s-text color="critical">{searchError}</s-text>}
+              {searchedOrder && (
+                <s-box background="base" marginBlockStart="base" padding="base" borderRadius="base">
+                  <s-heading level="4">Order Details</s-heading>
+                  <s-table variant="auto">
+                    <s-table-header-row>
+                      <s-table-header>Order Name</s-table-header>
+                      <s-table-header>Customer</s-table-header>
+                      <s-table-header>Phone</s-table-header>
+                      <s-table-header>Total</s-table-header>
+                      <s-table-header>Action</s-table-header>
+                    </s-table-header-row>
+                    <s-table-body>
+                      <s-table-row>
+                        <s-table-cell>{searchedOrder.orderName}</s-table-cell>
+                        <s-table-cell>{searchedOrder.firstName} {searchedOrder.lastName}</s-table-cell>
+                        <s-table-cell>{searchedOrder.shippingPhone || searchedOrder.contactPhone}</s-table-cell>
+                        <s-table-cell>${parseFloat(searchedOrder.totalPrice).toFixed(2)}</s-table-cell>
+                        <s-table-cell>
+                          <s-button
+                            size="small"
+                            onClick={() => handleSend(searchedOrder.orderName, parseFloat(searchedOrder.totalPrice))}
+                            disabled={fetcher.state !== "idle"}
+                          >
+                            Send
+                          </s-button>
+                        </s-table-cell>
+                      </s-table-row>
+                    </s-table-body>
+                  </s-table>
+                </s-box>
+              )}
+            </s-box>
+          )}
+
+          {/* Sent Orders Tab */}
+          {activeTab === "sent" && (
+            <s-box background="base" border="base" borderRadius="base" padding="base">
+              <s-heading level="3">Sent Orders</s-heading>
+              <s-table variant="auto">
+                <s-table-header-row>
+                  <s-table-header>Order Name</s-table-header>
+                  <s-table-header>Consignment ID</s-table-header>
+                  <s-table-header>Tracking Link</s-table-header>
+                  <s-table-header>Status</s-table-header>
+                  <s-table-header>Sent At</s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {sentOrders.length === 0 ? (
+                    <s-table-row>
+                      <s-table-cell colSpan={5}>No orders have been sent yet.</s-table-cell>
+                    </s-table-row>
+                  ) : (
+                    sentOrders.map((shipment) => (
+                      <s-table-row key={shipment.id}>
+                        <s-table-cell>{shipment.orderName}</s-table-cell>
+                        <s-table-cell>{shipment.consignmentId}</s-table-cell>
+                        <s-table-cell>
+                          {shipment.trackingLink ? (
+                            <a href={shipment.trackingLink} target="_blank" rel="noreferrer">
+                              Track
+                            </a>
+                          ) : "-"}
+                        </s-table-cell>
+                        <s-table-cell>{shipment.status || "-"}</s-table-cell>
+                        <s-table-cell>{new Date(shipment.createdAt).toLocaleString()}</s-table-cell>
+                      </s-table-row>
+                    ))
+                  )}
+                </s-table-body>
+              </s-table>
+            </s-box>
+          )}
 
           {/* Response status from fetcher */}
           {fetcher.data && (
