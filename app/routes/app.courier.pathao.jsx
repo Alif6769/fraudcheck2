@@ -14,7 +14,7 @@ export async function loader({ request }) {
     orderBy: { orderTime: "desc" },
   });
   console.log(
-    `shop domain in pathao ${shopDomain}`
+    `shop domain in pathao ${shopDomain}, total unfulfilled orders ${unfulfilledOrders.length}`
   );
 
   return { unfulfilledOrders, shopDomain };
