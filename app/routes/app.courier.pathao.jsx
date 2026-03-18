@@ -1,6 +1,6 @@
 // app/routes/app.courier.pathao.jsx
 import { useLoaderData, useFetcher } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { decrypt } from "../../utils/encryption.js";
@@ -222,6 +222,16 @@ export async function action({ request }) {
       headers: { "Content-Type": "application/json" },
     });
   }
+  else if (actionType === "cancel_sent") {
+    const { shipmentId } = formData;
+    await prisma.courierShipment.delete({
+      where: { id: parseInt(shipmentId) },
+    });
+    return new Response(
+      JSON.stringify({ success: true, actionType: "cancel_sent" }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
 }
@@ -238,13 +248,85 @@ export default function PathaoDashboard() {
   const [searchedOrder, setSearchedOrder] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [sendingAll, setSendingAll] = useState(false);
+  const [sendAllResults, setSendAllResults] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
-  const handleSync = () => {
-    alert("Sync Unfulfilled clicked");
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success) {
+      const { actionType } = fetcher.data;
+      if (actionType === "cancel" || actionType === "cancel_sent") {
+        window.location.reload();
+      }
+    }
+  }, [fetcher.state, fetcher.data]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sync/unfulfilled", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sync failed");
+      alert(`Sync successful: ${data.message}`);
+      // Reload to show updated orders
+      window.location.reload();
+    } catch (err) {
+      alert(`Sync error: ${err.message}`);
+    } finally {
+      setSyncing(false);
+    }
   };
+  
+  const handleSendAll = async () => {
+    const ordersToSend = unfulfilledOrders.filter(order => !order.isHeld);
+    if (ordersToSend.length === 0) {
+      alert("No eligible orders to send (all are held or none).");
+      return;
+    }
 
-  const handleSendAll = () => {
-    alert("Send All clicked");
+    const confirmMsg = `Send ${ordersToSend.length} order(s) to Pathao?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setSendingAll(true);
+    setSendAllResults(null);
+
+    const results = [];
+    for (const order of ordersToSend) {
+      const defaultCod = parseFloat(order.totalPrice);
+      const cod = codInputs[order.orderName] !== undefined ? codInputs[order.orderName] : defaultCod;
+
+      // Validate COD input
+      if (isNaN(parseFloat(cod))) {
+        results.push({ orderName: order.orderName, success: false, error: "Invalid COD" });
+        continue;
+      }
+
+      try {
+        // Use a promise to wrap fetcher submit – we'll use fetch directly here
+        const response = await fetch("/app/courier/pathao", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            actionType: "send",
+            orderName: order.orderName,
+            codAmount: cod,
+            selectedStoreId: selectedStore,
+          }),
+        });
+        const data = await response.json();
+        results.push({
+          orderName: order.orderName,
+          success: data.success,
+          consignmentId: data.consignmentId,
+          error: data.error,
+        });
+      } catch (error) {
+        results.push({ orderName: order.orderName, success: false, error: error.message });
+      }
+    }
+
+    setSendAllResults(results);
+    setSendingAll(false);
   };
 
   const handleCodChange = (orderName, value) => {
@@ -306,6 +388,15 @@ export default function PathaoDashboard() {
     }
   };
 
+  const handleCancelSent = (shipmentId, orderName) => {
+    if (window.confirm(`Are you sure you want to cancel shipment for order ${orderName}?`)) {
+      fetcher.submit(
+        { actionType: "cancel_sent", shipmentId },
+        { method: "post", encType: "application/json" }
+      );
+    }
+  };
+
   if (!credentialsConfigured) {
     return (
       <s-page heading="Pathao Courier" inlineSize="large">
@@ -354,9 +445,34 @@ export default function PathaoDashboard() {
           {activeTab === "unfulfilled" && (
             <s-stack gap="base">
               <s-stack direction="inline" gap="small">
-                <s-button onClick={handleSync}>Sync Unfulfilled</s-button>
-                <s-button onClick={handleSendAll}>Send All</s-button>
+                <s-button onClick={handleSync} disabled={syncing}>
+                  {syncing ? "Syncing..." : "Sync Unfulfilled"}
+                </s-button>
+                <s-button onClick={handleSendAll} disabled={sendingAll}>
+                  {sendingAll ? "Sending..." : "Send All"}
+                </s-button>
               </s-stack>
+              {sendAllResults && (
+                <s-box background="info" padding="base" borderRadius="base" border="base">
+                  <s-heading level="3">Send All Results</s-heading>
+                  <s-table variant="auto">
+                    <s-table-header-row>
+                      <s-table-header>Order</s-table-header>
+                      <s-table-header>Status</s-table-header>
+                      <s-table-header>Consignment ID</s-table-header>
+                    </s-table-header-row>
+                    <s-table-body>
+                      {sendAllResults.map((r) => (
+                        <s-table-row key={r.orderName}>
+                          <s-table-cell>{r.orderName}</s-table-cell>
+                          <s-table-cell>{r.success ? "✅" : "❌"}</s-table-cell>
+                          <s-table-cell>{r.consignmentId || r.error}</s-table-cell>
+                        </s-table-row>
+                      ))}
+                    </s-table-body>
+                  </s-table>
+                </s-box>
+              )}
 
               {/* Unfulfilled Orders Table */}
               <s-box background="base" border="base" borderRadius="base" padding="base">
@@ -532,11 +648,12 @@ export default function PathaoDashboard() {
                   <s-table-header>Tracking Link</s-table-header>
                   <s-table-header>Status</s-table-header>
                   <s-table-header>Sent At</s-table-header>
+                  <s-table-header>Actions</s-table-header>   {/* New column */}
                 </s-table-header-row>
                 <s-table-body>
                   {sentOrders.length === 0 ? (
                     <s-table-row>
-                      <s-table-cell colSpan={5}>No orders have been sent yet.</s-table-cell>
+                      <s-table-cell colSpan={6}>No orders have been sent yet.</s-table-cell>
                     </s-table-row>
                   ) : (
                     sentOrders.map((shipment) => (
@@ -545,13 +662,20 @@ export default function PathaoDashboard() {
                         <s-table-cell>{shipment.consignmentId}</s-table-cell>
                         <s-table-cell>
                           {shipment.trackingLink ? (
-                            <a href={shipment.trackingLink} target="_blank" rel="noreferrer">
-                              Track
-                            </a>
+                            <a href={shipment.trackingLink} target="_blank" rel="noreferrer">Track</a>
                           ) : "-"}
                         </s-table-cell>
                         <s-table-cell>{shipment.status || "-"}</s-table-cell>
                         <s-table-cell>{new Date(shipment.createdAt).toLocaleString()}</s-table-cell>
+                        <s-table-cell>
+                          <s-button
+                            size="small"
+                            onClick={() => handleCancelSent(shipment.id, shipment.orderName)}
+                            disabled={fetcher.state !== "idle"}
+                          >
+                            Cancel
+                          </s-button>
+                        </s-table-cell>
                       </s-table-row>
                     ))
                   )}
@@ -559,7 +683,6 @@ export default function PathaoDashboard() {
               </s-table>
             </s-box>
           )}
-
           {/* Response status from fetcher */}
           {fetcher.data && (
             <s-box
