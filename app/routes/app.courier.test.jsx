@@ -266,6 +266,7 @@ export default function CourierTest() {
       const res = await fetch("/app/courier/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: 'include', // 👈 add this
         body: JSON.stringify({ courier: "steadfast", ...steadfastForm }),
       });
       const data = await res.json();

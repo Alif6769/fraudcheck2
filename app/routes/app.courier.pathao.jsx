@@ -285,14 +285,14 @@ export default function PathaoDashboard() {
   const [sendAllResults, setSendAllResults] = useState(null);
   const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.success) {
-      const { actionType } = fetcher.data;
-      if (actionType === "cancel" || actionType === "cancel_sent") {
-        window.location.reload();
-      }
-    }
-  }, [fetcher.state, fetcher.data]);
+  // useEffect(() => {
+  //   if (fetcher.state === "idle" && fetcher.data?.success) {
+  //     const { actionType } = fetcher.data;
+  //     if (actionType === "cancel" || actionType === "cancel_sent") {
+  //       window.location.reload();
+  //     }
+  //   }
+  // }, [fetcher.state, fetcher.data]);
 
   const handleSync = async () => {
     setSyncing(true);
