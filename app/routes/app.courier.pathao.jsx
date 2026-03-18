@@ -2,7 +2,8 @@
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import {elements} from '@shopify/polaris-app-home';
+import { Page, Layout, Card, Text, Button, IndexTable } from "@shopify/polaris";
+
 
 // ---------- Loader ----------
 export async function loader({ request }) {
@@ -23,81 +24,90 @@ export async function loader({ request }) {
 
 // ---------- Component ----------
 export default function PathaoDashboard() {
-  const { unfulfilledOrders, shopDomain } = useLoaderData();
-  console.log("Component unfulfilledOrders:", unfulfilledOrders);
+     const { unfulfilledOrders, shopDomain } = useLoaderData();
 
-  const handleSync = () => {
-    window.location.reload();
-  };
-  const {
-     Page,
-     Section,
-     Stack,
-     Heading,
-     Text,
-     Box,
-     Button,
-     Table,
-     TableHeaderRow,
-     TableHeader,
-     TableBody,
-     TableRow,
-     TableCell,
-   } = elements;
+     const handleSync = () => {
+       window.location.reload();
+     };
 
-  return (
-       <Page heading="Pathao Courier – Unfulfilled Orders">
-         <Section>
-           <Stack gap="base">
-             <Text>Shop: {shopDomain}</Text>
+     const resourceName = {
+       singular: "order",
+       plural: "orders",
+     };
 
-             <Stack direction="inline" gap="small">
-               <Button onClick={handleSync}>Sync Orders</Button>
-             </Stack>
+     const rowMarkup = unfulfilledOrders.length === 0
+       ? null
+       : unfulfilledOrders.map((order, index) => (
+           <IndexTable.Row
+             id={order.orderName}
+             key={order.orderName}
+             position={index}
+           >
+             <IndexTable.Cell>{order.orderName}</IndexTable.Cell>
+             <IndexTable.Cell>
+               ${parseFloat(order.totalPrice).toFixed(2)}
+             </IndexTable.Cell>
+             <IndexTable.Cell>
+               {order.firstName} {order.lastName}
+             </IndexTable.Cell>
+             <IndexTable.Cell>
+               {order.shippingPhone || order.contactPhone}
+             </IndexTable.Cell>
+             <IndexTable.Cell>
+               {order.shippingAddress || "-"}
+             </IndexTable.Cell>
+           </IndexTable.Row>
+         ));
 
-             <Box background="base" border="base" borderRadius="base" padding="base">
-               <Heading>Unfulfilled Orders</Heading>
+     return (
+       <Page title="Pathao Courier – Unfulfilled Orders">
+         <Layout>
+           <Layout.Section>
+             <Card>
+               <Card.Header
+                 title="Pathao Courier – Unfulfilled Orders"
+                 actions={[
+                   {
+                     content: "Sync Orders",
+                     onAction: handleSync,
+                   },
+                 ]}
+               />
+               <Card.Section>
+                 <Text as="p" variant="bodyMd">
+                   Shop: {shopDomain}
+                 </Text>
+               </Card.Section>
 
-               <Table variant="auto">
-                 <TableHeaderRow>
-                   <TableHeader listSlot="primary">Order Name</TableHeader>
-                   <TableHeader format="currency">Total Price</TableHeader>
-                   <TableHeader listSlot="secondary">Customer Name</TableHeader>
-                   <TableHeader>Shipping Phone</TableHeader>
-                   <TableHeader>Shipping Address</TableHeader>
-                 </TableHeaderRow>
-                 <TableBody>
+               <Card.Section>
+                 <IndexTable
+                   resourceName={resourceName}
+                   itemCount={unfulfilledOrders.length}
+                   headings={[
+                     { title: "Order Name" },
+                     { title: "Total Price" },
+                     { title: "Customer Name" },
+                     { title: "Shipping Phone" },
+                     { title: "Shipping Address" },
+                   ]}
+                   selectable={false}
+                 >
                    {unfulfilledOrders.length === 0 ? (
-                     <TableRow>
-                       <TableCell>No unfulfilled orders found.</TableCell>
-                       <TableCell />
-                       <TableCell />
-                       <TableCell />
-                       <TableCell />
-                     </TableRow>
+                     <IndexTable.Row id="empty" position={0}>
+                       <IndexTable.Cell colSpan={5}>
+                         <Text as="p" alignment="center">
+                           No unfulfilled orders found.
+                         </Text>
+                       </IndexTable.Cell>
+                     </IndexTable.Row>
                    ) : (
-                     unfulfilledOrders.map((order) => (
-                       <TableRow key={order.orderName}>
-                         <TableCell>{order.orderName}</TableCell>
-                         <TableCell>
-                           {parseFloat(order.totalPrice).toFixed(2)}
-                         </TableCell>
-                         <TableCell>
-                           {order.firstName} {order.lastName}
-                         </TableCell>
-                         <TableCell>
-                           {order.shippingPhone || order.contactPhone}
-                         </TableCell>
-                         <TableCell>
-                           {order.shippingAddress || '-'}</TableCell>
-                       </TableRow>
-                     ))
+                     rowMarkup
                    )}
-                 </TableBody>
-               </Table>
-             </Box>
-           </Stack>
-         </Section>
+                 </IndexTable>
+               </Card.Section>
+             </Card>
+           </Layout.Section>
+         </Layout>
        </Page>
      );
    }
