@@ -1,6 +1,6 @@
 // app/routes/app.courier.test.jsx
 import { useState } from "react";
-import { useLoaderData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router"; // 👈 import useFetcher
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { decrypt } from "../../utils/encryption.js";
@@ -222,7 +222,7 @@ export default function CourierTest() {
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
   // const apiFetch = useAuthenticatedFetch(); // 👈 use this instead of fetch
-
+  const fetcher = useFetcher(); // 👈 create fetcher
   // Pathao form state
   const [pathaoForm, setPathaoForm] = useState({
     selected_store_id: decrypted?.pathao?.defaultStoreId || "",
@@ -255,61 +255,24 @@ export default function CourierTest() {
     item_description: "Test parcel",
   });
 
-  const handlePathaoSubmit = async (e) => {
+  const handlePathaoSubmit = (e) => {
     e.preventDefault();
     setLoading(true);
     setResponse(null);
-    try {
-      const res = await fetch("/app/courier/test", {  // 👈 use apiFetch
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courier: "pathao", ...pathaoForm }),
-      });
-      const data = await res.json();
-      setResponse(data);
-    } catch (err) {
-      setResponse({ error: err.message });
-    } finally {
-      setLoading(false);
-    }
+    fetcher.submit(
+      { courier: "pathao", ...pathaoForm },
+      { method: "post", encType: "application/json" }
+    );
   };
 
-  const handleSteadfastSubmit = async (e) => {
+  const handleSteadfastSubmit = (e) => {
     e.preventDefault();
     setLoading(true);
     setResponse(null);
-    try {
-      const res = await fetch("/app/courier/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // credentials is optional for same-origin, but you can leave it:
-        credentials: "include",
-        body: JSON.stringify({ courier: "steadfast", ...steadfastForm }),
-      });
-
-      const contentType = res.headers.get("content-type") || "";
-      const text = await res.text();
-
-      console.log("Steadfast status:", res.status);
-      console.log("Steadfast content-type:", contentType);
-      console.log("Steadfast raw body (first 200 chars):", text.slice(0, 200));
-
-      if (!contentType.includes("application/json")) {
-        throw new Error(
-          `Expected JSON but got ${contentType}. Body starts with: ${text.slice(
-            0,
-            80
-          )}`
-        );
-      }
-
-      const data = JSON.parse(text);
-      setResponse(data);
-    } catch (err) {
-      setResponse({ error: err.message });
-    } finally {
-      setLoading(false);
-    }
+    fetcher.submit(
+      { courier: "steadfast", ...steadfastForm },
+      { method: "post", encType: "application/json" }
+    );
   };
 
   return (
