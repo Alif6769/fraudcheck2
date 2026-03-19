@@ -148,8 +148,8 @@ export default function Analysis() {
               <s-heading>{tabs[selectedTab].label}</s-heading>
               <s-table variant="auto">
                 <s-table-header-row>
-                    <s-table-header style={{ width: '180px' }}>Product</s-table-header>
-                    <s-table-header style={{ width: '1fr' }}>Value</s-table-header>
+                    <s-table-header style={{ width: '150px' }}>Product</s-table-header>
+                    <s-table-header>Value</s-table-header>
                 </s-table-header-row>
                 <s-table-body>
                   {data.length === 0 ? (
@@ -160,7 +160,7 @@ export default function Analysis() {
                     data.map((item) => (
                       <s-table-row key={item.productId}>
                         <s-table-cell>{item.productName}</s-table-cell>
-                        <s-table-cell>
+                        <s-table-cell style={{ minWidth: '300px' }}>
                           <ValueBar
                             value={item.value}
                             max={max}
