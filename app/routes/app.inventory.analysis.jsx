@@ -1,6 +1,5 @@
 import { useLoaderData } from "react-router";
 import { useState } from "react";
-import { Tabs } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
@@ -149,8 +148,8 @@ export default function Analysis() {
               <s-heading>{tabs[selectedTab].label}</s-heading>
               <s-table variant="auto">
                 <s-table-header-row>
-                  <s-table-header>Product</s-table-header>
-                  <s-table-header>Value</s-table-header>
+                    <s-table-header style={{ width: '180px' }}>Product</s-table-header>
+                    <s-table-header style={{ width: '1fr' }}>Value</s-table-header>
                 </s-table-header-row>
                 <s-table-body>
                   {data.length === 0 ? (
