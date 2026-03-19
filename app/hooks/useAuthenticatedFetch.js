@@ -1,15 +1,14 @@
 // app/hooks/useAuthenticatedFetch.js
-import { useAppBridge } from "@shopify/app-bridge-react";
-import { getSessionToken } from "@shopify/app-bridge-utils";
+import {useMemo} from "react";
+import {useAppBridge} from "@shopify/shopify-app-react-router/react";
+import {authenticatedFetch} from "@shopify/app-bridge-utils";
 
 export function useAuthenticatedFetch() {
   const app = useAppBridge();
-  return async (url, options = {}) => {
-    const token = await getSessionToken(app);
-    const headers = {
-      ...options.headers,
-      Authorization: `Bearer ${token}`,
-    };
-    return fetch(url, { ...options, headers });
-  };
+
+  return useMemo(() => {
+    // authenticatedFetch returns a fetch-like function that already
+    // attaches Authorization headers using a session token
+    return authenticatedFetch(app);
+  }, [app]);
 }
