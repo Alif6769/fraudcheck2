@@ -184,36 +184,36 @@ async function createSteadfastOrder(shopDomain, orderData) {
     item_description: orderData.item_description || "",
   };
 
-  // const response = await axios.post(
-  //   "https://portal.packzy.com/api/v1/create_order",
-  //   payload,
-  //   {
-  //     headers: {
-  //       "Api-Key": apiCreds.api_key,
-  //       "Secret-Key": apiCreds.api_secret,
-  //       "Content-Type": "application/json",
-  //     },
-  //   }
-  // );
+  const response = await axios.post(
+    "https://portal.packzy.com/api/v1/create_order",
+    payload,
+    {
+      headers: {
+        "Api-Key": apiCreds.api_key,
+        "Secret-Key": apiCreds.api_secret,
+        "Content-Type": "application/json",
+      },
+    }
+  );
 
-  // if (response.data.status === 200) {
-  //   return {
-  //     consignmentId: response.data.consignment.consignment_id,
-  //     trackingCode: response.data.consignment.tracking_code,
-  //     trackingLink: `https://steadfast.com.bd/t/${response.data.consignment.tracking_code}`,
-  //     invoice: response.data.consignment.invoice,
-  //     orderStatus: response.data.consignment.status,
-  //   };
-  // } else {
-  //   throw new Error(response.data.message || "Steadfast order failed");
-  // }
-  return {
-    consignmentId: "MOCK123456",
-    trackingCode: "MOCKCODE",
-    trackingLink: "https://steadfast.com.bd/t/MOCKCODE",
-    invoice: orderData.invoice,
-    orderStatus: "in_review",
-  };
+  if (response.data.status === 200) {
+    return {
+      consignmentId: response.data.consignment.consignment_id,
+      trackingCode: response.data.consignment.tracking_code,
+      trackingLink: `https://steadfast.com.bd/t/${response.data.consignment.tracking_code}`,
+      invoice: response.data.consignment.invoice,
+      orderStatus: response.data.consignment.status,
+    };
+  } else {
+    throw new Error(response.data.message || "Steadfast order failed");
+  }
+  // return {
+  //   consignmentId: "MOCK123456",
+  //   trackingCode: "MOCKCODE",
+  //   trackingLink: "https://steadfast.com.bd/t/MOCKCODE",
+  //   invoice: orderData.invoice,
+  //   orderStatus: "in_review",
+  // };
 }
 
 // ---------- Component ----------
