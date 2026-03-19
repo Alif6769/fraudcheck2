@@ -5,6 +5,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { decrypt } from "../../utils/encryption.js";
 import axios from "axios";
+import { useAuthenticatedFetch } from "../hooks/useAuthenticatedFetch";
 
 // ---------- Loader: fetch and decrypt credentials ----------
 export async function loader({ request }) {
@@ -124,27 +125,34 @@ async function createPathaoOrder(shopDomain, orderData) {
     amount_to_collect: parseInt(orderData.amount_to_collect),
   };
 
-  const response = await axios.post(
-    "https://api-hermes.pathao.com/aladdin/api/v1/orders",
-    payload,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
+  // const response = await axios.post(
+  //   "https://api-hermes.pathao.com/aladdin/api/v1/orders",
+  //   payload,
+  //   {
+  //     headers: {
+  //       Authorization: `Bearer ${accessToken}`,
+  //       "Content-Type": "application/json",
+  //     },
+  //   }
+  // );
 
-  if (response.data.code === 200) {
-    return {
-      consignmentId: response.data.data.consignment_id,
-      trackingLink: `https://merchant.pathao.com/tracking?consignment_id=${response.data.data.consignment_id}&phone=${orderData.recipient_phone}`,
-      deliveryFee: response.data.data.delivery_fee,
-      orderStatus: response.data.data.order_status,
-    };
-  } else {
-    throw new Error(response.data.message || "Pathao order failed");
-  }
+  // if (response.data.code === 200) {
+  //   return {
+  //     consignmentId: response.data.data.consignment_id,
+  //     trackingLink: `https://merchant.pathao.com/tracking?consignment_id=${response.data.data.consignment_id}&phone=${orderData.recipient_phone}`,
+  //     deliveryFee: response.data.data.delivery_fee,
+  //     orderStatus: response.data.data.order_status,
+  //   };
+  // } else {
+  //   throw new Error(response.data.message || "Pathao order failed");
+  // }
+  return {
+    consignmentId: "MOCK123456",
+    // trackingCode: "MOCKCODE",
+    trackingLink: "https://steadfast.com.bd/t/MOCKCODE",
+    deliveryFee: 0,
+    orderStatus: "in_review",
+  };
 }
 
 // ---------- Helper: create Steadfast order ----------
@@ -213,6 +221,7 @@ export default function CourierTest() {
   const { decrypted, shopDomain } = useLoaderData();
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
+  const apiFetch = useAuthenticatedFetch(); // 👈 use this instead of fetch
 
   // Pathao form state
   const [pathaoForm, setPathaoForm] = useState({
@@ -251,7 +260,7 @@ export default function CourierTest() {
     setLoading(true);
     setResponse(null);
     try {
-      const res = await fetch("/app/courier/test", {
+      const res = await apiFetch("/app/courier/test", {  // 👈 use apiFetch
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ courier: "pathao", ...pathaoForm }),
@@ -270,10 +279,9 @@ export default function CourierTest() {
     setLoading(true);
     setResponse(null);
     try {
-      const res = await fetch("/app/courier/test", {
+      const res = await apiFetch("/app/courier/test", {  // 👈 use apiFetch
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: 'include', // 👈 add this
         body: JSON.stringify({ courier: "steadfast", ...steadfastForm }),
       });
       const data = await res.json();
