@@ -17,6 +17,7 @@ export default function InventoryLayout() {
     { to: "product-mapping", label: "Product Mapping" },
     { to: "check-inventory", label: "Check Inventory" },
     { to: "todays-inventory", label: "Today's Inventory" },
+    { to: "restock", label: "Restock" },
     { to: "manual-sell", label: "Manual Sell" },
     { to: "return", label: "Return" },
     { to: "analysis", label: "Analysis" },
