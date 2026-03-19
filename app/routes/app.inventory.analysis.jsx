@@ -143,36 +143,32 @@ export default function Analysis() {
               </label>
             </div>
 
-            {/* Table */}
+            {/* Grid-based table */}
             <s-box background="base" border="base" borderRadius="base" padding="base">
-              <s-heading>{tabs[selectedTab].label}</s-heading>
-              <s-table variant="auto">
-                <s-table-header-row>
-                    <s-table-header style={{ width: '150px' }}>Product</s-table-header>
-                    <s-table-header>Value</s-table-header>
-                </s-table-header-row>
-                <s-table-body>
-                  {data.length === 0 ? (
-                    <s-table-row>
-                      <s-table-cell colSpan={2}>No data available.</s-table-cell>
-                    </s-table-row>
-                  ) : (
-                    data.map((item) => (
-                      <s-table-row key={item.productId}>
-                        <s-table-cell>{item.productName}</s-table-cell>
-                        <s-table-cell style={{ minWidth: '300px' }}>
-                          <ValueBar
-                            value={item.value}
-                            max={max}
-                            isAverage={showAverage}
-                            days={days}
-                          />
-                        </s-table-cell>
-                      </s-table-row>
-                    ))
-                  )}
-                </s-table-body>
-              </s-table>
+            <s-heading>{tabs[selectedTab].label}</s-heading>
+            {/* Header row */}
+            <s-grid gridTemplateColumns="200px 1fr" gap="small" padding="small">
+                <s-text type="strong">Product</s-text>
+                <s-text type="strong">Value</s-text>
+            </s-grid>
+            {/* Data rows */}
+            <s-stack gap="small">
+                {data.length === 0 ? (
+                <s-text>No data available.</s-text>
+                ) : (
+                data.map((item) => (
+                    <s-grid key={item.productId} gridTemplateColumns="200px 1fr" gap="small" padding="small">
+                    <s-text>{item.productName}</s-text>
+                    <ValueBar
+                        value={item.value}
+                        max={max}
+                        isAverage={showAverage}
+                        days={days}
+                    />
+                    </s-grid>
+                ))
+                )}
+            </s-stack>
             </s-box>
           </s-stack>
         </s-stack>
