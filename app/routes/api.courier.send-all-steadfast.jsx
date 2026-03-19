@@ -56,6 +56,15 @@ export async function action({ request }) {
           continue;
         }
 
+        // Prevent resending if already sent
+        const existing = await prisma.courierShipment.findFirst({
+          where: { orderName, courierName: "steadfast" },
+        });
+        if (existing) {
+          results.push({ orderName, success: false, error: "Order already sent" });
+          continue;
+        }
+
         // Clean phone number
         let phone = order.shippingPhone || order.contactPhone || "";
         phone = phone.replace(/\D/g, "");
@@ -84,8 +93,11 @@ export async function action({ request }) {
           // already plain string
         }
 
+        // Sanitize invoice (remove #)
+        const invoice = order.orderName.replace(/^#/, '');
+
         const payload = {
-          invoice: order.orderName,
+          invoice,
           recipient_name: order.firstName + " " + order.lastName,
           recipient_phone: phone,
           recipient_address: address,
@@ -95,6 +107,8 @@ export async function action({ request }) {
           recipient_email: "",
           item_description: "Order from " + order.orderName,
         };
+
+        console.log(`[Steadfast] Sending order ${orderName} with payload:`, JSON.stringify(payload));
 
         const response = await axios.post(
           "https://portal.packzy.com/api/v1/create_order",
@@ -107,6 +121,8 @@ export async function action({ request }) {
             },
           }
         );
+
+        console.log(`[Steadfast] Response for ${orderName}:`, response.status, response.data);
 
         if (response.data.status === 200) {
           const consignmentId = response.data.consignment.consignment_id.toString();
@@ -136,6 +152,8 @@ export async function action({ request }) {
             trackingLink,
           });
         } else {
+          // Log the actual error from Steadfast
+          console.error(`[Steadfast] API error for ${orderName}:`, response.data);
           results.push({
             orderName,
             success: false,
@@ -143,7 +161,7 @@ export async function action({ request }) {
           });
         }
       } catch (error) {
-        console.error(`Error processing order ${orderName}:`, error);
+        console.error(`[Steadfast] Exception for order ${orderName}:`, error);
         results.push({
           orderName,
           success: false,
@@ -157,7 +175,7 @@ export async function action({ request }) {
       { headers: { "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("Send all error:", error);
+    console.error("[Steadfast] Send all error:", error);
     return new Response(
       JSON.stringify({ error: error.message || "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
