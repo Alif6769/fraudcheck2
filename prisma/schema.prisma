@@ -172,6 +172,8 @@ model DailyInventorySnapshot {
   cancelledManual  Int      @default(0) // MANUAL_SALE
   cancelledReturn  Int      @default(0) // RETURN
   cancelledDamage  Int      @default(0) // DAMAGE
+  inventory        Int      @default(0)
+  restocked        Int      @default(0)
 }
 
 model ProcessedOrderRange {
@@ -235,6 +237,7 @@ enum TransactionType {
   RETURN
   DAMAGE
   MANUAL_SALE
+  RESTOCK   // add this
 }
 
 // Transaction table
