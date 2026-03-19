@@ -477,18 +477,18 @@ export default function CourierTest() {
       </s-box>
 
       {/* Response banner */}
-      {response && (
+      {fetcher.data && (
         <s-box
-          background={response.success ? "success" : "critical"}
+          background={fetcher.data.success ? "success" : "critical"}
           padding="base"
           borderRadius="base"
           border="base"
         >
           <s-heading level="3">
-            {response.success ? "✅ Success" : "❌ Error"}
+            {fetcher.data.success ? "✅ Success" : "❌ Error"}
           </s-heading>
           <pre style={{ whiteSpace: "pre-wrap" }}>
-            {JSON.stringify(response, null, 2)}
+            {JSON.stringify(fetcher.data, null, 2)}
           </pre>
         </s-box>
       )}
