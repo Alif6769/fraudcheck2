@@ -99,8 +99,8 @@ export default function Analysis() {
   const [showAverage, setShowAverage] = useState(false);
 
   const tabs = [
-    { id: "7days", content: "Last 7 Days" },
-    { id: "30days", content: "Last 30 Days" },
+    { id: "7days", label: "Last 7 Days" },
+    { id: "30days", label: "Last 30 Days" },
   ];
 
   const isSeven = selectedTab === 0;
@@ -117,7 +117,21 @@ export default function Analysis() {
         <s-stack gap="base">
           <s-text>Shop: {shopDomain}</s-text>
 
-          <Tabs tabs={tabs} selected={selectedTab} onSelect={setSelectedTab}>
+          {/* Custom tab navigation */}
+          <s-stack direction="inline" gap="small">
+            {tabs.map((tab, index) => (
+              <s-button
+                key={tab.id}
+                onClick={() => setSelectedTab(index)}
+                variant={selectedTab === index ? "primary" : "secondary"}
+              >
+                {tab.label}
+              </s-button>
+            ))}
+          </s-stack>
+
+          {/* Content for selected tab */}
+          <s-stack gap="base">
             {/* Checkbox for average toggle */}
             <div style={{ margin: "1rem 0" }}>
               <label>
@@ -132,7 +146,7 @@ export default function Analysis() {
 
             {/* Table */}
             <s-box background="base" border="base" borderRadius="base" padding="base">
-              <s-heading>{tabs[selectedTab].content}</s-heading>
+              <s-heading>{tabs[selectedTab].label}</s-heading>
               <s-table variant="auto">
                 <s-table-header-row>
                   <s-table-header>Product</s-table-header>
@@ -161,7 +175,7 @@ export default function Analysis() {
                 </s-table-body>
               </s-table>
             </s-box>
-          </Tabs>
+          </s-stack>
         </s-stack>
       </s-section>
     </s-page>
