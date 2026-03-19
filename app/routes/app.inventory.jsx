@@ -18,8 +18,8 @@ export default function InventoryLayout() {
     { to: "check-inventory", label: "Check Inventory" },
     { to: "todays-inventory", label: "Today's Inventory" },
     { to: "restock", label: "Restock" },
-    { to: "manual-sell", label: "Manual Sell" },
-    { to: "return", label: "Return" },
+    { to: "return_manual_sell_damage", label: "Return, Damage & Manual Sell" },
+    { to: "inventory_summery", label: "Inventory Summery" },
     { to: "analysis", label: "Analysis" },
   ];
 
