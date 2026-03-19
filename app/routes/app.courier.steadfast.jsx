@@ -118,78 +118,107 @@ export async function action({ request }) {
   const apiCreds = JSON.parse(decrypt(creds.credentials));
 
   if (actionType === "send") {
-    // Fetch the order from UnfulfilledOrder
+    console.log(`[Steadfast send] Starting for order ${orderName}`);
     const order = await prisma.unfulfilledOrder.findUnique({
-      where: { orderName },
+        where: { orderName },
     });
     if (!order) {
-      return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
+        console.log(`[Steadfast send] Order not found: ${orderName}`);
+        return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
     }
+    console.log(`[Steadfast send] Order found: ${orderName}`);
 
-    // Clean phone number (same as Pathao)
+    // ---------- Prevent resending ----------
+    const existing = await prisma.courierShipment.findFirst({
+        where: { orderName, courierName: "steadfast" },
+    });
+    if (existing) {
+        console.log(`[Steadfast send] Order already sent: ${orderName}`);
+        return new Response(
+        JSON.stringify({ error: "Order already sent to Steadfast" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    }
+    console.log(`[Steadfast send] No existing shipment`);
+
+    // ---------- Clean phone ----------
     let phone = order.shippingPhone || order.contactPhone || "";
+    console.log(`[Steadfast send] Raw phone: ${phone}`);
     phone = phone.replace(/\D/g, "");
+    console.log(`[Steadfast send] Digits only: ${phone}`);
     if (phone.length >= 11) {
-      phone = phone.slice(-11);
+        phone = phone.slice(-11);
     } else if (phone.length === 10) {
-      phone = "0" + phone;
+        phone = "0" + phone;
     } else {
-      return new Response(
+        console.log(`[Steadfast send] Invalid phone length: ${phone.length}`);
+        return new Response(
         JSON.stringify({ error: "Invalid phone number" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
-      );
+        );
     }
+    console.log(`[Steadfast send] Final phone: ${phone}`);
 
-    // Clean address
+    // ---------- Clean address ----------
     let address = order.shippingAddress || "";
+    console.log(`[Steadfast send] Raw address: ${address.substring(0, 100)}`);
     try {
-      const addrObj = JSON.parse(address);
-      const parts = [
+        const addrObj = JSON.parse(address);
+        const parts = [
         addrObj.address1,
         addrObj.address2,
         addrObj.city,
         addrObj.province,
         addrObj.country,
-      ].filter(Boolean);
-      address = parts.join(", ");
+        ].filter(Boolean);
+        address = parts.join(", ");
+        console.log(`[Steadfast send] Parsed address: ${address}`);
     } catch {
-      // already plain string
+        console.log(`[Steadfast send] Address not JSON, using as is`);
+        // keep as is
     }
 
-    // Prepare payload for Steadfast
+    // ---------- Sanitize invoice (remove #) ----------
+    const invoice = order.orderName.replace(/^#/, '');
+    console.log(`[Steadfast send] Invoice: ${invoice}`);
+
     const payload = {
-      invoice: order.orderName,          // use orderName as invoice (must be unique)
-      recipient_name: order.firstName + " " + order.lastName,
-      recipient_phone: phone,
-      recipient_address: address,
-      cod_amount: parseFloat(codAmount) || parseFloat(order.totalPrice),
-      note: "",                          // optional
-      alternative_phone: "",             // optional
-      recipient_email: "",                // optional
-      item_description: "Order from " + order.orderName,
+        invoice,
+        recipient_name: order.firstName + " " + order.lastName,
+        recipient_phone: phone,
+        recipient_address: address,
+        cod_amount: parseFloat(codAmount) || parseFloat(order.totalPrice),
+        note: "",
+        alternative_phone: "",
+        recipient_email: "",
+        item_description: "Order from " + order.orderName,
     };
+    console.log(`[Steadfast send] Payload prepared`);
 
     try {
-      const response = await axios.post(
+        console.log(`[Steadfast send] Sending request to Steadfast API...`);
+        const response = await axios.post(
         "https://portal.packzy.com/api/v1/create_order",
         payload,
         {
-          headers: {
+            headers: {
             "Api-Key": apiCreds.api_key,
             "Secret-Key": apiCreds.api_secret,
             "Content-Type": "application/json",
-          },
+            },
         }
-      );
+        );
+        console.log(`[Steadfast send] Response received. Status: ${response.status}`);
+        console.log(`[Steadfast send] Response data:`, JSON.stringify(response.data, null, 2));
 
-      if (response.data.status === 200) {
+        if (response.data.status === 200) {
         const consignmentId = response.data.consignment.consignment_id.toString();
         const trackingCode = response.data.consignment.tracking_code;
         const trackingLink = `https://steadfast.com.bd/t/${trackingCode}`;
 
-        // Create shipment record
+        console.log(`[Steadfast send] Creating shipment record for ${orderName}`);
         await prisma.courierShipment.create({
-          data: {
+            data: {
             orderName,
             courierName: "steadfast",
             consignmentId,
@@ -197,29 +226,46 @@ export async function action({ request }) {
             trackingLink,
             status: response.data.consignment.status,
             response: response.data,
-          },
+            },
         });
+        console.log(`[Steadfast send] Shipment record created`);
 
-        // Remove any existing hold
+        console.log(`[Steadfast send] Removing hold if any`);
         await prisma.courierOrderHold.deleteMany({
-          where: { orderName, courierName: "steadfast" },
+            where: { orderName, courierName: "steadfast" },
         });
+        console.log(`[Steadfast send] Hold removed`);
 
+        console.log(`[Steadfast send] Returning success`);
         return new Response(
-          JSON.stringify({ success: true, consignmentId, trackingLink, trackingCode }),
-          { headers: { "Content-Type": "application/json" } }
+            JSON.stringify({ success: true, consignmentId, trackingLink, trackingCode }),
+            { headers: { "Content-Type": "application/json" } }
         );
-      } else {
-        throw new Error(response.data.message || "Steadfast order failed");
-      }
+        } else {
+        const errorMsg = response.data.message || "Steadfast order failed";
+        console.error(`[Steadfast send] API returned error:`, response.data);
+        return new Response(
+            JSON.stringify({ error: errorMsg }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+        }
     } catch (error) {
-      console.error("Steadfast send error:", error);
-      return new Response(
+        console.error(`[Steadfast send] Caught exception:`, error);
+        // Log full error details
+        if (error.response) {
+        console.error(`[Steadfast send] Error response status:`, error.response.status);
+        console.error(`[Steadfast send] Error response data:`, error.response.data);
+        } else if (error.request) {
+        console.error(`[Steadfast send] No response received:`, error.request);
+        } else {
+        console.error(`[Steadfast send] Error message:`, error.message);
+        }
+        return new Response(
         JSON.stringify({ error: error.message || "Failed to send order" }),
         { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+        );
     }
-  } else if (actionType === "hold") {
+} else if (actionType === "hold") {
     await prisma.courierOrderHold.upsert({
       where: {
         orderName_courierName: { orderName, courierName: "steadfast" },
