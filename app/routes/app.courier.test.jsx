@@ -221,7 +221,7 @@ export default function CourierTest() {
   const { decrypted, shopDomain } = useLoaderData();
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
-  const apiFetch = useAuthenticatedFetch(); // 👈 use this instead of fetch
+  // const apiFetch = useAuthenticatedFetch(); // 👈 use this instead of fetch
 
   // Pathao form state
   const [pathaoForm, setPathaoForm] = useState({
@@ -260,7 +260,7 @@ export default function CourierTest() {
     setLoading(true);
     setResponse(null);
     try {
-      const res = await apiFetch("/app/courier/test", {  // 👈 use apiFetch
+      const res = await fetch("/app/courier/test", {  // 👈 use apiFetch
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ courier: "pathao", ...pathaoForm }),
