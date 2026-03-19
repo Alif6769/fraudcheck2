@@ -219,10 +219,8 @@ async function createSteadfastOrder(shopDomain, orderData) {
 // ---------- Component ----------
 export default function CourierTest() {
   const { decrypted, shopDomain } = useLoaderData();
-  const [response, setResponse] = useState(null);
-  const [loading, setLoading] = useState(false);
-  // const apiFetch = useAuthenticatedFetch(); // 👈 use this instead of fetch
-  const fetcher = useFetcher(); // 👈 create fetcher
+  const fetcher = useFetcher(); // single fetcher for both forms
+
   // Pathao form state
   const [pathaoForm, setPathaoForm] = useState({
     selected_store_id: decrypted?.pathao?.defaultStoreId || "",
@@ -257,8 +255,6 @@ export default function CourierTest() {
 
   const handlePathaoSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
-    setResponse(null);
     fetcher.submit(
       { courier: "pathao", ...pathaoForm },
       { method: "post", encType: "application/json" }
@@ -267,13 +263,13 @@ export default function CourierTest() {
 
   const handleSteadfastSubmit = (e) => {
     e.preventDefault();
-    setLoading(true);
-    setResponse(null);
     fetcher.submit(
       { courier: "steadfast", ...steadfastForm },
       { method: "post", encType: "application/json" }
     );
   };
+
+  const isLoading = fetcher.state !== "idle";
 
   return (
     <s-stack gap="base">
@@ -410,8 +406,8 @@ export default function CourierTest() {
               onChange={(e) => setPathaoForm({ ...pathaoForm, item_description: e.target.value })}
             />
           </s-grid>
-          <s-button type="submit" disabled={loading}>
-            {loading ? "Creating..." : "Create Pathao Order"}
+          <s-button type="submit" disabled={isLoading}>
+            {isLoading ? "Creating..." : "Create Pathao Order"}
           </s-button>
         </form>
       </s-box>
@@ -474,8 +470,8 @@ export default function CourierTest() {
               onChange={(e) => setSteadfastForm({ ...steadfastForm, item_description: e.target.value })}
             />
           </s-grid>
-          <s-button type="submit" disabled={loading}>
-            {loading ? "Creating..." : "Create Steadfast Order"}
+          <s-button type="submit" disabled={isLoading}>
+            {isLoading ? "Creating..." : "Create Steadfast Order"}
           </s-button>
         </form>
       </s-box>
