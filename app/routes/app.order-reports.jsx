@@ -1,6 +1,5 @@
 // app/routes/app.order-reports.jsx (layout)
 import { Outlet, useLocation } from "react-router";
-import { authenticate } from "../shopify.server";
 
 // No loader needed here – the children will have their own loaders
 export default function OrderReportsLayout() {
