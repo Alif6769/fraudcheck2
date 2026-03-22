@@ -38,12 +38,27 @@ export const loader = async ({ request }) => {
 export const action = async ({ request }) => {
   try {
     const { session, admin } = await authenticate.admin(request);
-    const formData = await request.formData();
-    const intent = formData.get("intent");
+    const contentType = request.headers.get("content-type") || "";
 
-    // Handle hold/unhold actions
+    let intent, orderName, formData;
+
+    if (contentType.includes("application/json")) {
+      // Handle JSON (hold/unhold)
+      const body = await request.json();
+      intent = body.intent;
+      orderName = body.orderName;
+    } else {
+      // Handle form data (sync-orders, sync-sheet, clear-sheet)
+      formData = await request.formData();
+      intent = formData.get("intent");
+      orderName = formData.get("orderName");
+    }
+
+    // Process hold/unhold
     if (intent === "hold" || intent === "unhold") {
-      const orderName = formData.get("orderName");
+      if (!orderName) {
+        return new Response(JSON.stringify({ error: "Missing orderName" }), { status: 400 });
+      }
       const allCouriers = ["pathao", "steadfast"];
       if (intent === "hold") {
         await prisma.$transaction(
@@ -62,7 +77,7 @@ export const action = async ({ request }) => {
       }
     }
 
-    // Existing sync actions
+    // Existing sync actions (use formData from above)
     if (intent === "sync-sheet") {
       await syncSheetForToday(session.shop);
       return new Response(
