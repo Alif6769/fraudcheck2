@@ -370,16 +370,26 @@ export default function OrderReports() {
                     {/* Message & Send column */}
                     <td style={tdStyle}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        <input
-                            type="text"
+                            <textarea
                             value={messages[order.orderName] || ""}
                             onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
-                            style={{ width: "100%", padding: "4px" }}
-                            placeholder="Enter message"
-                        />
-                        <button onClick={() => handleSend(order.orderName)}>Send</button>
+                            style={{
+                                width: "100%",
+                                padding: "8px",
+                                resize: "vertical",
+                                minHeight: "60px",
+                                maxHeight: "120px",
+                                overflow: "auto",
+                                fontFamily: "inherit",
+                                fontSize: "inherit",
+                                border: "1px solid #ccc",
+                                borderRadius: "4px",
+                            }}
+                            placeholder="Enter message (long text supported)"
+                            />
+                            <button onClick={() => handleSend(order.orderName)}>Send</button>
                         </div>
-                    </td>
+                        </td>
 
                     {/* Hold column */}
                     <td style={tdStyle}>
