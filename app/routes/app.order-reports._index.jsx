@@ -339,10 +339,17 @@ export default function OrderReports() {
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
           <div style={{ overflow: "auto", maxHeight: "80vh", marginTop: "10px", width: "100%" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: "14px",
+                tableLayout: "fixed",
+              }}
+            >
               <thead>
                 <tr>
-                    <th style={{ ...thStyle, width: "150px" }}>Message</th>
+                  <th style={{ ...thStyle, width: "200px" }}>Message</th>
                   <th style={{ ...thStyle, width: "100px" }}>Actions</th>
                   <th style={{ ...thStyle, width: "70px" }}>Risk</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
@@ -355,29 +362,30 @@ export default function OrderReports() {
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
                   <th style={{ ...thStyle, width: "90px" }}>Shipping Fee</th>
                   <th style={{ ...thStyle, width: "200px" }}>Products</th>
-                  
                 </tr>
               </thead>
               <tbody>
-                <td style={tdStyle}>
-                    <input
-                    type="text"
-                    value={messages[order.orderName] || ""}
-                    onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
-                    style={{ width: "100%", padding: "4px" }}
-                    placeholder="Enter message"
-                    />
-                </td>
-                <td style={tdStyle}>
-                    <button onClick={() => handleSend(order.orderName)} style={{ marginRight: "8px" }}>
-                    Send
-                    </button>
-                    <button onClick={() => handleHold(order.orderName, order.isHeld)}>
-                    {order.isHeld ? "Unhold" : "Hold"}
-                    </button>
-                </td>
                 {orders.map((order) => (
                   <tr key={order.id}>
+                    {/* Message column – input takes full width */}
+                    <td style={tdStyle}>
+                      <input
+                        type="text"
+                        value={messages[order.orderName] || ""}
+                        onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
+                        style={{ width: "100%", padding: "4px" }}
+                        placeholder="Enter message"
+                      />
+                    </td>
+                    {/* Actions column – buttons side by side */}
+                    <td style={tdStyle}>
+                      <button onClick={() => handleSend(order.orderName)} style={{ marginRight: "8px" }}>
+                        Send
+                      </button>
+                      <button onClick={() => handleHold(order.orderName, order.isHeld)}>
+                        {order.isHeld ? "Unhold" : "Hold"}
+                      </button>
+                    </td>
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
                       {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
                     </td>
@@ -386,14 +394,38 @@ export default function OrderReports() {
                     <td style={tdStyle}>{formatCustomerName(order.firstName, order.lastName)}</td>
                     <td style={tdStyle}>
                       {order.fraudReport ? (
-                        <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
+                        <div
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: "150px",
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                            background: "#f5f5f5",
+                            padding: "4px",
+                            fontSize: "11px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                          }}
+                        >
                           {order.fraudReport}
                         </div>
                       ) : "-"}
                     </td>
                     <td style={tdStyle}>
                       {order.steadFastReport ? (
-                        <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
+                        <div
+                          style={{
+                            maxWidth: "100%",
+                            maxHeight: "150px",
+                            overflow: "auto",
+                            whiteSpace: "pre-wrap",
+                            background: "#f5f5f5",
+                            padding: "4px",
+                            fontSize: "11px",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                          }}
+                        >
                           {order.steadFastReport}
                         </div>
                       ) : "-"}
@@ -405,11 +437,12 @@ export default function OrderReports() {
                     <td style={tdStyle}>
                       {Array.isArray(order.products) && order.products.length > 0 ? (
                         order.products.map((product, idx) => (
-                          <div key={idx}>{product.title || "Product"} × {product.quantity || 1}</div>
+                          <div key={idx}>
+                            {product.title || "Product"} × {product.quantity || 1}
+                          </div>
                         ))
                       ) : "-"}
                     </td>
-                    
                   </tr>
                 ))}
               </tbody>
