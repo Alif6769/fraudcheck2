@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useLocation } from "react-router";
 import { useState, useEffect } from "react";
 import { authenticate, syncOrders, syncSheetForToday, clearSheetForShop } from "../shopify.server";
 import prisma from "../db.server";
@@ -237,6 +237,8 @@ export default function OrderReports() {
     }
   }, [fetcher.state, fetcher.data]);
 
+  const isSetupPage = location.pathname === "/app/order-reports/setup";
+
   return (
     <s-page heading="Order Reports" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
@@ -246,6 +248,34 @@ export default function OrderReports() {
           <s-link href="/app/inventory">Inventory</s-link>
           <s-link href="/app/courier">Courier Services</s-link>
           <s-link href="/app/setup">Setup</s-link>
+        </s-stack>
+
+        {/* Sub‑navigation */}
+        <s-stack direction="inline" gap="small" style={{ marginBottom: "1rem" }}>
+          <s-link
+            href="/app/order-reports"
+            style={{
+              fontWeight: !isSetupPage ? "bold" : "normal",
+              textDecoration: "none",
+              color: !isSetupPage ? "#008060" : "#666",
+              borderBottom: !isSetupPage ? "2px solid #008060" : "none",
+              padding: "8px 12px",
+            }}
+          >
+            Order Reports
+          </s-link>
+          <s-link
+            href="/app/order-reports/setup"
+            style={{
+              fontWeight: isSetupPage ? "bold" : "normal",
+              textDecoration: "none",
+              color: isSetupPage ? "#008060" : "#666",
+              borderBottom: isSetupPage ? "2px solid #008060" : "none",
+              padding: "8px 12px",
+            }}
+          >
+            Setup
+          </s-link>
         </s-stack>
 
         {/* Settings form */}
