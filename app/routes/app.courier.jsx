@@ -58,7 +58,6 @@ export default function CourierLayout() {
                 <s-link href="/app/order-reports">Order Reports</s-link>
                 <s-link href="/app/inventory">Inventory</s-link>
                 <s-link href="/app/courier">Courier Services</s-link>
-                <s-link href="/app/setup">Setup</s-link>
               </s-stack>
 
               <Outlet />
