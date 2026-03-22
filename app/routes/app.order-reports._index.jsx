@@ -243,41 +243,6 @@ export default function OrderReports() {
   return (
     <s-page heading="Order Reports" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
-        {/* Top‑level navigation */}
-        <s-stack direction="inline" gap="small" style={{ marginBottom: "1rem" }}>
-          <s-link href="/app/order-reports">Order Reports</s-link>
-          <s-link href="/app/inventory">Inventory</s-link>
-          <s-link href="/app/courier">Courier Services</s-link>
-        </s-stack>
-
-        {/* Sub‑navigation */}
-        <s-stack direction="inline" gap="small" style={{ marginBottom: "1rem" }}>
-          <s-link
-            href="/app/order-reports"
-            style={{
-              fontWeight: !isSetupPage ? "bold" : "normal",
-              textDecoration: "none",
-              color: !isSetupPage ? "#008060" : "#666",
-              borderBottom: !isSetupPage ? "2px solid #008060" : "none",
-              padding: "8px 12px",
-            }}
-          >
-            Order Reports
-          </s-link>
-          <s-link
-            href="/app/order-reports/setup"
-            style={{
-              fontWeight: isSetupPage ? "bold" : "normal",
-              textDecoration: "none",
-              color: isSetupPage ? "#008060" : "#666",
-              borderBottom: isSetupPage ? "2px solid #008060" : "none",
-              padding: "8px 12px",
-            }}
-          >
-            Setup
-          </s-link>
-        </s-stack>
-
         {/* Settings form */}
         <fetcher.Form method="post">
           <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
@@ -377,6 +342,8 @@ export default function OrderReports() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
               <thead>
                 <tr>
+                    <th style={{ ...thStyle, width: "150px" }}>Message</th>
+                  <th style={{ ...thStyle, width: "100px" }}>Actions</th>
                   <th style={{ ...thStyle, width: "70px" }}>Risk</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
@@ -388,11 +355,27 @@ export default function OrderReports() {
                   <th style={{ ...thStyle, width: "90px" }}>Total Price</th>
                   <th style={{ ...thStyle, width: "90px" }}>Shipping Fee</th>
                   <th style={{ ...thStyle, width: "200px" }}>Products</th>
-                  <th style={{ ...thStyle, width: "150px" }}>Message</th>
-                  <th style={{ ...thStyle, width: "100px" }}>Actions</th>
+                  
                 </tr>
               </thead>
               <tbody>
+                <td style={tdStyle}>
+                    <input
+                    type="text"
+                    value={messages[order.orderName] || ""}
+                    onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
+                    style={{ width: "100%", padding: "4px" }}
+                    placeholder="Enter message"
+                    />
+                </td>
+                <td style={tdStyle}>
+                    <button onClick={() => handleSend(order.orderName)} style={{ marginRight: "8px" }}>
+                    Send
+                    </button>
+                    <button onClick={() => handleHold(order.orderName, order.isHeld)}>
+                    {order.isHeld ? "Unhold" : "Hold"}
+                    </button>
+                </td>
                 {orders.map((order) => (
                   <tr key={order.id}>
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
@@ -426,23 +409,7 @@ export default function OrderReports() {
                         ))
                       ) : "-"}
                     </td>
-                    <td style={tdStyle}>
-                      <input
-                        type="text"
-                        value={messages[order.orderName] || ""}
-                        onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
-                        style={{ width: "100%", padding: "4px" }}
-                        placeholder="Enter message"
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <button onClick={() => handleSend(order.orderName)} style={{ marginRight: "8px" }}>
-                        Send
-                      </button>
-                      <button onClick={() => handleHold(order.orderName, order.isHeld)}>
-                        {order.isHeld ? "Unhold" : "Hold"}
-                      </button>
-                    </td>
+                    
                   </tr>
                 ))}
               </tbody>
