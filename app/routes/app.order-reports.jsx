@@ -1,67 +1,108 @@
-// app/routes/app.order-reports.jsx
 import { useLoaderData, useFetcher } from "react-router";
 import { useState, useEffect } from "react";
-import { authenticate } from "../shopify.server";
+import { authenticate, syncOrders, syncSheetForToday, clearSheetForShop } from "../shopify.server";
 import prisma from "../db.server";
 
-// // ---------- Loader ----------
-// export async function loader({ request }) {
-//   const { session } = await authenticate.admin(request);
-//   const orders = await prisma.order.findMany({
-//     where: { shop: session.shop },
-//     orderBy: { orderTime: "desc" },
-//   });
+// ---------- Loader ----------
+export const loader = async ({ request }) => {
+  try {
+    const { session } = await authenticate.admin(request);
+    const orders = await prisma.order.findMany({
+      where: { shop: session.shop },
+      orderBy: { orderTime: "desc" },
+    });
+    // Fetch holds for all orders (any courier)
+    const holds = await prisma.courierOrderHold.findMany({
+      where: { orderName: { in: orders.map(o => o.orderName) } },
+    });
+    const heldOrderNames = new Set(holds.map(h => h.orderName));
+    const ordersWithHold = orders.map(order => ({
+      ...order,
+      isHeld: heldOrderNames.has(order.orderName),
+    }));
+    const settings = await prisma.shopSettings.findUnique({
+      where: { shop: session.shop },
+    });
+    return {
+      orders: ordersWithHold,
+      shop: session.shop,
+      settings: settings || {},
+    };
+  } catch (error) {
+    console.error("❌ Loader error:", error);
+    throw new Response("Failed to load orders", { status: 500 });
+  }
+};
 
-//   // Fetch all holds for these orders (any courier)
-//   const holds = await prisma.courierOrderHold.findMany({
-//     where: {
-//       orderName: { in: orders.map(o => o.orderName) },
-//     },
-//   });
-//   // Mark order as held if at least one hold exists
-//   const heldOrderNames = new Set(holds.map(h => h.orderName));
+// ---------- Action ----------
+export const action = async ({ request }) => {
+  try {
+    const { session, admin } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const intent = formData.get("intent");
 
-//   const ordersWithHold = orders.map(order => ({
-//     ...order,
-//     isHeld: heldOrderNames.has(order.orderName),
-//   }));
+    // Handle hold/unhold actions
+    if (intent === "hold" || intent === "unhold") {
+      const orderName = formData.get("orderName");
+      const allCouriers = ["pathao", "steadfast"];
+      if (intent === "hold") {
+        await prisma.$transaction(
+          allCouriers.map(courierName =>
+            prisma.courierOrderHold.upsert({
+              where: { orderName_courierName: { orderName, courierName } },
+              update: {},
+              create: { orderName, courierName },
+            })
+          )
+        );
+        return new Response(JSON.stringify({ success: true, held: true }));
+      } else if (intent === "unhold") {
+        await prisma.courierOrderHold.deleteMany({ where: { orderName } });
+        return new Response(JSON.stringify({ success: true, held: false }));
+      }
+    }
 
-//   return { orders: ordersWithHold, shop: session.shop };
-// }
+    // Existing sync actions
+    if (intent === "sync-sheet") {
+      await syncSheetForToday(session.shop);
+      return new Response(
+        JSON.stringify({ success: true, message: "Sheet sync started", intent }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (intent === "clear-sheet") {
+      await clearSheetForShop(session.shop);
+      return new Response(
+        JSON.stringify({ success: true, message: "Sheet clear started", intent }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
-// // ---------- Action ----------
-// export async function action({ request }) {
-//   const { session } = await authenticate.admin(request);
-//   const formData = await request.json();
-//   const { orderName, actionType } = formData;
-
-//   // List of all active couriers – could be fetched from DB dynamically
-//   const allCouriers = ["pathao", "steadfast"];
-
-//   if (actionType === "hold") {
-//     // Create hold records for all couriers
-//     await prisma.$transaction(
-//       allCouriers.map(courierName =>
-//         prisma.courierOrderHold.upsert({
-//           where: {
-//             orderName_courierName: { orderName, courierName },
-//           },
-//           update: {},
-//           create: { orderName, courierName },
-//         })
-//       )
-//     );
-//     return new Response(JSON.stringify({ success: true, held: true }));
-//   } else if (actionType === "unhold") {
-//     // Delete all hold records for this order
-//     await prisma.courierOrderHold.deleteMany({
-//       where: { orderName },
-//     });
-//     return new Response(JSON.stringify({ success: true, held: false }));
-//   }
-
-//   return new Response(JSON.stringify({ error: "Invalid action" }), { status: 400 });
-// }
+    // Default: sync orders
+    const options = {
+      fetchLimit: parseInt(formData.get("fetchLimit") || "100", 10),
+      reportLimit: parseInt(formData.get("reportLimit") || "10", 10),
+      fraudspyEnabled: formData.get("fraudspyEnabled") === "on",
+      steadfastEnabled: formData.get("steadfastEnabled") === "on",
+    };
+    await prisma.shopSettings.upsert({
+      where: { shop: session.shop },
+      update: options,
+      create: { shop: session.shop, ...options },
+    });
+    const count = await syncOrders(session, admin, options);
+    return new Response(
+      JSON.stringify({ success: true, synced: count, intent }),
+      { status: 200, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("❌ /app action failed:", error);
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+};
 
 // ---------- Helper Functions (copied from OrdersDashboard) ----------
 function formatDate(date) {
@@ -78,9 +119,7 @@ function getDhakaStatus(shippingAddressStr) {
 
   let fullAddress = "";
   try {
-    // Attempt to parse as JSON (Shopify address object)
     const address = JSON.parse(shippingAddressStr);
-    // Combine all relevant address fields
     const parts = [
       address.address1,
       address.address2,
@@ -91,27 +130,19 @@ function getDhakaStatus(shippingAddressStr) {
     ].filter(Boolean);
     fullAddress = parts.join(" ");
   } catch (e) {
-    // Not JSON – treat as plain text
     fullAddress = shippingAddressStr;
   }
 
-  // Case‑insensitive check for "dhaka"
-  if (fullAddress.toLowerCase().includes("dhaka")) {
-    return "Inside Dhaka";
-  } else {
-    return "Outside Dhaka";
-  }
+  return fullAddress.toLowerCase().includes("dhaka") ? "Inside Dhaka" : "Outside Dhaka";
 }
 
 // ================== HELPER: Parse FraudSpy Report ==================
 function parseFraudSpyReport(report) {
   if (!report) return { ratio: null, totalOrders: null, hasFraudReports: false };
 
-  // Extract success ratio (handles both "Success ratio:" and "Success Rate:")
   const ratioMatch = report.match(/(?:Success ratio|Success Rate):\s*(\d+(?:\.\d+)?)%/i);
   const ratio = ratioMatch ? parseFloat(ratioMatch[1]) : null;
 
-  // Extract total orders
   let totalOrders = null;
   const totalMatch = report.match(/Total:\s*(\d+)/i);
   if (totalMatch) {
@@ -126,7 +157,6 @@ function parseFraudSpyReport(report) {
     }
   }
 
-  // Check if FraudSpy report contains actual fraud reports
   const hasFraudReports = report.includes("Fraud reports:") && !report.includes("No fraud reports.");
 
   return { ratio, totalOrders, hasFraudReports };
@@ -134,42 +164,27 @@ function parseFraudSpyReport(report) {
 
 // ================== HELPER: Parse Steadfast Report ==================
 function parseSteadfastReport(report) {
-  if (!report) return null; // no report → null
-
+  if (!report) return null;
   const text = report.toLowerCase();
-
   return text.includes("fraud reports:") && !text.includes("no fraud reports.");
 }
 
 // ================== MAIN RISK INDICATOR ==================
 function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
-  if (!fraudReport) return "";               // no FraudSpy report → empty
-
+  if (!fraudReport) return "";
   const parsed = parseFraudSpyReport(fraudReport);
-  if (parsed.ratio === null) return "";      // can't parse ratio → empty
-
+  if (parsed.ratio === null) return "";
   const steadfastFraud = parseSteadfastReport(steadfastReport);
-  // Combine fraud indicators: true if either source has fraud reports (ignore null/undefined)
   const hasAnyFraudReport = (steadfastFraud === true);
-
   const isOutside = getDhakaStatus(shippingAddress) === "Outside Dhaka";
 
-  // Apply rules in priority order
-  if (parsed.ratio < 80) {
-    return "🔴🔴🔴";                          // below 80% → triple red
-  } else if (parsed.ratio < 90 && hasAnyFraudReport) {
-    return "🔴🔴🔴";                          // below 90% + fraud → triple red
-  } else if (hasAnyFraudReport) {
-    return "🔴🔴";                            // fraud present → double red
-  } else if (parsed.ratio < 90 && isOutside) {
-    return "🔴🔴";                            // below 90% + outside Dhaka → double red
-  } else if (parsed.ratio < 90) {
-    return "🔴";                              // only below 90% → single red
-  } else if (parsed.totalOrders !== null && parsed.totalOrders < 10) {
-    return "🟠";                              // low volume → orange
-  } else {
-    return "🟢";                              // all good → green
-  }
+  if (parsed.ratio < 80) return "🔴🔴🔴";
+  if (parsed.ratio < 90 && hasAnyFraudReport) return "🔴🔴🔴";
+  if (hasAnyFraudReport) return "🔴🔴";
+  if (parsed.ratio < 90 && isOutside) return "🔴🔴";
+  if (parsed.ratio < 90) return "🔴";
+  if (parsed.totalOrders !== null && parsed.totalOrders < 10) return "🟠";
+  return "🟢";
 }
 
 const thStyle = {
@@ -185,10 +200,18 @@ const tdStyle = {
   verticalAlign: "top",
 };
 
+// ---------- Component ----------
 export default function OrderReports() {
-  const { orders, shop } = useLoaderData();
+  const { orders, shop, settings } = useLoaderData();
   const fetcher = useFetcher();
   const [messages, setMessages] = useState({});
+  const [fetchLimit, setFetchLimit] = useState(settings.fetchLimit ?? 100);
+  const [reportLimit, setReportLimit] = useState(settings.reportLimit ?? 10);
+  const [fraudspyEnabled, setFraudspyEnabled] = useState(settings.fraudspyEnabled ?? false);
+  const [steadfastEnabled, setSteadfastEnabled] = useState(settings.steadfastEnabled ?? true);
+
+  const isSubmitting = fetcher.state === "submitting";
+  const currentIntent = fetcher.submission?.formData?.get("intent") || null;
 
   const handleMessageChange = (orderName, value) => {
     setMessages({ ...messages, [orderName]: value });
@@ -197,13 +220,12 @@ export default function OrderReports() {
   const handleSend = (orderName) => {
     const msg = messages[orderName] || "";
     alert(`Sending message to ${orderName}: ${msg}`);
-    // Here you would implement actual sending (e.g., via API)
   };
 
   const handleHold = (orderName, currentlyHeld) => {
-    const actionType = currentlyHeld ? "unhold" : "hold";
+    const intent = currentlyHeld ? "unhold" : "hold";
     fetcher.submit(
-      { orderName, actionType },
+      { intent, orderName },
       { method: "post", encType: "application/json" }
     );
   };
@@ -218,20 +240,111 @@ export default function OrderReports() {
   return (
     <s-page heading="Order Reports" inlineSize="large">
       <s-section style={{ width: "100%", padding: 0 }}>
+        {/* Top‑level navigation */}
+        <s-stack direction="inline" gap="small" style={{ marginBottom: "1rem" }}>
+          <s-link href="/app/order-reports">Order Reports</s-link>
+          <s-link href="/app/inventory">Inventory</s-link>
+          <s-link href="/app/courier">Courier Services</s-link>
+          <s-link href="/app/setup">Setup</s-link>
+        </s-stack>
+
+        {/* Settings form */}
+        <fetcher.Form method="post">
+          <div style={{ display: 'flex', gap: '20px', marginBottom: '15px', flexWrap: 'wrap' }}>
+            <label>
+              Pull orders (max):
+              <input
+                type="number"
+                name="fetchLimit"
+                value={fetchLimit}
+                onChange={(e) => setFetchLimit(e.target.value)}
+                min="1"
+                max="250"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              Reports per service:
+              <input
+                type="number"
+                name="reportLimit"
+                value={reportLimit}
+                onChange={(e) => setReportLimit(e.target.value)}
+                min="0"
+                max="50"
+                style={{ marginLeft: '8px', width: '80px' }}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="fraudspyEnabled"
+                checked={fraudspyEnabled}
+                onChange={(e) => setFraudspyEnabled(e.target.checked)}
+              />
+              Enable FraudSpy
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                name="steadfastEnabled"
+                checked={steadfastEnabled}
+                onChange={(e) => setSteadfastEnabled(e.target.checked)}
+              />
+              Enable Steadfast
+            </label>
+          </div>
+
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "15px" }}>
+            <button
+              type="submit"
+              name="intent"
+              value="sync-orders"
+              disabled={isSubmitting && currentIntent === "sync-orders"}
+              style={{ padding: "8px 16px", background: "#008060", color: "white", border: "none", borderRadius: "6px" }}
+            >
+              {isSubmitting && currentIntent === "sync-orders" ? "Syncing..." : "Sync Orders"}
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="sync-sheet"
+              disabled={isSubmitting && currentIntent === "sync-sheet"}
+              style={{ padding: "8px 16px", background: "#4285F4", color: "white", border: "none", borderRadius: "6px" }}
+            >
+              {isSubmitting && currentIntent === "sync-sheet" ? "Syncing Sheet..." : "Sync Today to Sheet"}
+            </button>
+            <button
+              type="submit"
+              name="intent"
+              value="clear-sheet"
+              disabled={isSubmitting && currentIntent === "clear-sheet"}
+              style={{ padding: "8px 16px", background: "#dc3545", color: "white", border: "none", borderRadius: "6px" }}
+            >
+              {isSubmitting && currentIntent === "clear-sheet" ? "Clearing..." : "Clear Sheet"}
+            </button>
+          </div>
+        </fetcher.Form>
+
+        {/* Feedback messages */}
+        {fetcher.data?.success && (
+          <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
+            ✅ {fetcher.data.synced ? `${fetcher.data.synced} orders synced` : fetcher.data.message}
+          </div>
+        )}
+        {fetcher.data?.error && (
+          <div style={{ marginBottom: "10px", color: "red", fontWeight: "500" }}>
+            ❌ {fetcher.data.error}
+          </div>
+        )}
+
         <s-paragraph>Showing orders for: <strong>{shop}</strong></s-paragraph>
 
         {orders.length === 0 ? (
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
           <div style={{ overflow: "auto", maxHeight: "80vh", marginTop: "10px", width: "100%" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "14px",
-                tableLayout: "fixed",
-              }}
-            >
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
               <thead>
                 <tr>
                   <th style={{ ...thStyle, width: "70px" }}>Risk</th>

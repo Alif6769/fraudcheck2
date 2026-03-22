@@ -70,9 +70,10 @@ export default function InventoryLayout() {
             <s-stack gap="base">
               {/* Top-level app nav row */}
               <s-stack direction="inline" gap="small">
-                <s-link href="/app">Home</s-link>
+                <s-link href="/app/order-reports">Order Reports</s-link>
                 <s-link href="/app/inventory">Inventory</s-link>
-                <s-link href="/app/courier">Courier Serivices</s-link>
+                <s-link href="/app/courier">Courier Services</s-link>
+                <s-link href="/app/setup">Setup</s-link>
               </s-stack>
 
               {/* Nested inventory routes render here */}
