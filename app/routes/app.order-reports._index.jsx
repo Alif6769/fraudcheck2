@@ -366,86 +366,63 @@ export default function OrderReports() {
               </thead>
               <tbody>
                 {orders.map((order) => (
-                  <tr key={order.id}>
-                    {/* Message column – input takes full width */}
+                    <tr key={order.id}>
+                    {/* Message & Send column */}
                     <td style={tdStyle}>
-                      <input
-                        type="text"
-                        value={messages[order.orderName] || ""}
-                        onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
-                        style={{ width: "100%", padding: "4px" }}
-                        placeholder="Enter message"
-                      />
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <input
+                            type="text"
+                            value={messages[order.orderName] || ""}
+                            onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
+                            style={{ width: "100%", padding: "4px" }}
+                            placeholder="Enter message"
+                        />
+                        <button onClick={() => handleSend(order.orderName)}>Send</button>
+                        </div>
                     </td>
-                    {/* Actions column – buttons side by side */}
+
+                    {/* Hold column */}
                     <td style={tdStyle}>
-                      <button onClick={() => handleSend(order.orderName)} style={{ marginRight: "8px" }}>
-                        Send
-                      </button>
-                      <button onClick={() => handleHold(order.orderName, order.isHeld)}>
+                        <button onClick={() => handleHold(order.orderName, order.isHeld)}>
                         {order.isHeld ? "Unhold" : "Hold"}
-                      </button>
+                        </button>
                     </td>
+
+                    {/* Remaining columns */}
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
-                      {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
+                        {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
                     </td>
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>{formatCustomerName(order.firstName, order.lastName)}</td>
                     <td style={tdStyle}>
-                      {order.fraudReport ? (
-                        <div
-                          style={{
-                            maxWidth: "100%",
-                            maxHeight: "150px",
-                            overflow: "auto",
-                            whiteSpace: "pre-wrap",
-                            background: "#f5f5f5",
-                            padding: "4px",
-                            fontSize: "11px",
-                            border: "1px solid #ccc",
-                            borderRadius: "4px",
-                          }}
-                        >
-                          {order.fraudReport}
+                        {order.fraudReport ? (
+                        <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
+                            {order.fraudReport}
                         </div>
-                      ) : "-"}
+                        ) : "-"}
                     </td>
                     <td style={tdStyle}>
-                      {order.steadFastReport ? (
-                        <div
-                          style={{
-                            maxWidth: "100%",
-                            maxHeight: "150px",
-                            overflow: "auto",
-                            whiteSpace: "pre-wrap",
-                            background: "#f5f5f5",
-                            padding: "4px",
-                            fontSize: "11px",
-                            border: "1px solid #ccc",
-                            borderRadius: "4px",
-                          }}
-                        >
-                          {order.steadFastReport}
+                        {order.steadFastReport ? (
+                        <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
+                            {order.steadFastReport}
                         </div>
-                      ) : "-"}
+                        ) : "-"}
                     </td>
                     <td style={tdStyle}>{order.shippingPhone || "-"}</td>
                     <td style={tdStyle}>{getDhakaStatus(order.shippingAddress)}</td>
                     <td style={tdStyle}>{order.totalPrice || "0"}</td>
                     <td style={tdStyle}>{order.shippingFee || "0"}</td>
                     <td style={tdStyle}>
-                      {Array.isArray(order.products) && order.products.length > 0 ? (
+                        {Array.isArray(order.products) && order.products.length > 0 ? (
                         order.products.map((product, idx) => (
-                          <div key={idx}>
-                            {product.title || "Product"} × {product.quantity || 1}
-                          </div>
+                            <div key={idx}>{product.title || "Product"} × {product.quantity || 1}</div>
                         ))
-                      ) : "-"}
+                        ) : "-"}
                     </td>
-                  </tr>
+                    </tr>
                 ))}
-              </tbody>
+                </tbody>
             </table>
           </div>
         )}
