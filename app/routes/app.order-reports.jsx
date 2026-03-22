@@ -204,6 +204,7 @@ const tdStyle = {
 export default function OrderReports() {
   const { orders, shop, settings } = useLoaderData();
   const fetcher = useFetcher();
+  const location = useLocation(); // ✅ get location object
   const [messages, setMessages] = useState({});
   const [fetchLimit, setFetchLimit] = useState(settings.fetchLimit ?? 100);
   const [reportLimit, setReportLimit] = useState(settings.reportLimit ?? 10);
