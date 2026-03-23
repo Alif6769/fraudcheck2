@@ -93,6 +93,19 @@ export const action = async ({ request }) => {
       );
     }
 
+    if (intent === "send-telegram") {
+      const { orderName, message } = body;
+      const order = await prisma.order.findUnique({
+        where: { orderName },
+      });
+      if (!order) {
+        return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
+      }
+      const { sendOrderToTelegram } = await import("../services/telegram.service");
+      await sendOrderToTelegram(session.shop, order, message);
+      return new Response(JSON.stringify({ success: true }));
+    }
+
     // Default: sync orders
     const options = {
       fetchLimit: parseInt(formData.get("fetchLimit") || "100", 10),
@@ -233,9 +246,28 @@ export default function OrderReports() {
     setMessages({ ...messages, [orderName]: value });
   };
 
-  const handleSend = (orderName) => {
-    const msg = messages[orderName] || "";
-    alert(`Sending message to ${orderName}: ${msg}`);
+  const handleSend = async (orderName, message) => {
+    if (!message.trim()) {
+      alert("Please enter a message before sending.");
+      return;
+    }
+    try {
+      const res = await fetch("/app/order-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: "send-telegram", orderName, message }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("✅ Message sent to Telegram!");
+        // Optionally clear the message for that order
+        setMessages(prev => ({ ...prev, [orderName]: "" }));
+      } else {
+        alert("❌ Failed to send: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
   };
 
   const handleHold = (orderName, currentlyHeld) => {
