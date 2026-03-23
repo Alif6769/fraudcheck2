@@ -41,10 +41,11 @@ export const action = async ({ request }) => {
     const contentType = request.headers.get("content-type") || "";
 
     let intent, orderName, formData;
+    let body = null;
 
     if (contentType.includes("application/json")) {
       // Handle JSON (hold/unhold)
-      const body = await request.json();
+      body = await request.json();
       intent = body.intent;
       orderName = body.orderName;
     } else {
@@ -94,7 +95,10 @@ export const action = async ({ request }) => {
     }
 
     if (intent === "send-telegram") {
-      const { orderName, message } = jsonBody;
+      if (!body) {
+        return new Response(JSON.stringify({ error: "Invalid request format" }), { status: 400 });
+      }
+      const { orderName, message } = body;
       if (!orderName || !message) {
         return new Response(JSON.stringify({ error: "Missing orderName or message" }), { status: 400 });
       }
@@ -108,7 +112,7 @@ export const action = async ({ request }) => {
       }
 
       // Send to Telegram using the stored credentials
-      const { sendOrderToTelegram } = await import("../services/telegram.service");
+      const { sendOrderToTelegram } = await import("../services/telegrambot.service");
       try {
         await sendOrderToTelegram(session.shop, order, message);
         return new Response(JSON.stringify({ success: true }));
