@@ -370,6 +370,7 @@ export default function OrderReports() {
                   <th style={{ ...thStyle, width: "100px" }}>Order Name</th>
                   <th style={{ ...thStyle, width: "100px" }}>Order Time</th>
                   <th style={{ ...thStyle, width: "150px" }}>Customer Name</th>
+                  <th style={{ ...thStyle, width: "150px" }}>Real Name</th>
                   <th style={{ ...thStyle, width: "250px" }}>FraudSpy Report</th>
                   <th style={{ ...thStyle, width: "250px" }}>Steadfast Report</th>
                   <th style={{ ...thStyle, width: "120px" }}>Shipping Phone</th>
@@ -420,6 +421,11 @@ export default function OrderReports() {
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
                     <td style={tdStyle}>{formatCustomerName(order.firstName, order.lastName)}</td>
+                    <td style={tdStyle}>
+                      name1: {order.realName1 || "-"}
+                      <br />
+                      name2: {order.realName2 || "-"}
+                    </td>
                     <td style={tdStyle}>
                         {order.fraudReport ? (
                         <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
