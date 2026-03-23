@@ -94,16 +94,28 @@ export const action = async ({ request }) => {
     }
 
     if (intent === "send-telegram") {
-      const { orderName, message } = body;
+      const { orderName, message } = jsonBody;
+      if (!orderName || !message) {
+        return new Response(JSON.stringify({ error: "Missing orderName or message" }), { status: 400 });
+      }
+
+      // Fetch the full order from the database
       const order = await prisma.order.findUnique({
         where: { orderName },
       });
       if (!order) {
         return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
       }
+
+      // Send to Telegram using the stored credentials
       const { sendOrderToTelegram } = await import("../services/telegram.service");
-      await sendOrderToTelegram(session.shop, order, message);
-      return new Response(JSON.stringify({ success: true }));
+      try {
+        await sendOrderToTelegram(session.shop, order, message);
+        return new Response(JSON.stringify({ success: true }));
+      } catch (sendError) {
+        console.error("Telegram send error:", sendError);
+        return new Response(JSON.stringify({ error: sendError.message || "Failed to send message" }), { status: 500 });
+      }
     }
 
     // Default: sync orders
@@ -252,7 +264,7 @@ export default function OrderReports() {
       return;
     }
     try {
-      const res = await fetch("/app/order-reports", {
+      const res = await fetch("/app/order-reports?index", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: "send-telegram", orderName, message }),
@@ -435,7 +447,7 @@ export default function OrderReports() {
                             }}
                             placeholder="Enter message (long text supported)"
                             />
-                            <button onClick={() => handleSend(order.orderName)}>Send</button>
+                            <button onClick={() => handleSend(order.orderName, messages[order.orderName] || "")}>Send</button>
                         </div>
                         </td>
 
