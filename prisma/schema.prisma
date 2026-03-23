@@ -304,3 +304,14 @@ model ProcessedFulfillment {
   processedAt DateTime @default(now())
 }
 
+model ShopCredential {
+  id            String   @id @default(cuid())
+  shop          String   // Shopify domain
+  type          String   // e.g., "fraudspy", "steadfast", "telegram", etc.
+  encryptedData String   // Encrypted JSON with all fields for that service
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([shop, type])
+  @@map("shop_credentials")
+}
