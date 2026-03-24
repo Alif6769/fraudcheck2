@@ -133,8 +133,8 @@ export async function syncOrders(
               name
               sourceName
               createdAt
-              updatedAt          // new field
-              cancelledAt        // new field
+              updatedAt          
+              cancelledAt        
               totalPriceSet { shopMoney { amount } }
               customer {
                 id

@@ -1,6 +1,21 @@
 import axios from 'axios';
 import { getCredentials } from './credentials.service.js'; // adjust the path as needed
 
+function formatShippingAddress(shippingAddress) {
+  if (!shippingAddress) return 'none';
+  // If it's a string, parse it
+  let addrObj = shippingAddress;
+  if (typeof shippingAddress === 'string') {
+    try {
+      addrObj = JSON.parse(shippingAddress);
+    } catch {
+      return 'none';
+    }
+  }
+  const parts = [addrObj.address1, addrObj.city].filter(Boolean);
+  return parts.length ? parts.join(', ') : 'none';
+}
+
 /**
  * Send an order summary to Telegram using stored credentials
  * @param {string} shop - The Shopify domain of the shop
@@ -26,7 +41,7 @@ export async function sendOrderToTelegram(shop, order, customText = '') {
 📦 *Order Name:* ${order.orderName}
 👤 *Customer:* ${order.firstName} ${order.lastName}
 📞 *Phone:* ${order.shippingPhone || order.contactPhone || '-'}
-🏠 *Address:* ${order.shippingAddress || '-'}
+🏠 *Address:* ${formatShippingAddress(order.shippingAddress)}
 💰 *Total:* ৳${order.totalPrice}
 🚚 *Shipping Fee:* ৳${order.shippingFee || 0}
 
