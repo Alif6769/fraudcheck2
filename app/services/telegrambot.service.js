@@ -23,8 +23,6 @@ export async function sendOrderToTelegram(shop, order, customText = '') {
     : 'No products listed';
 
   const message = `
-🧾 *Order Update*
-
 📦 *Order Name:* ${order.orderName}
 👤 *Customer:* ${order.firstName} ${order.lastName}
 📞 *Phone:* ${order.shippingPhone || order.contactPhone || '-'}
