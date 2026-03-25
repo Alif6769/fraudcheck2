@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator } from "react-router";
 import { useState, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -319,6 +319,8 @@ export default function SteadfastDashboard() {
     }
   }, [fetcher.state, fetcher.data]);
 
+  const revalidator = useRevalidator();
+
   const handleSync = async () => {
     setSyncing(true);
     try {
@@ -326,7 +328,7 @@ export default function SteadfastDashboard() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Sync failed");
       alert(`Sync successful: ${data.message}`);
-      window.location.reload();
+      revalidator.revalidate();
     } catch (err) {
       alert(`Sync error: ${err.message}`);
     } finally {
