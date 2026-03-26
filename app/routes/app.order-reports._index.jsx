@@ -120,7 +120,7 @@ export const action = async ({ request }) => {
         await sendOrderToTelegram(session.shop, order, message);
         console.log('[Action] sendOrderToTelegram succeeded');
         console.log('[Action] Returning success JSON');
-        return new Response(JSON.stringify({ success: true }));
+        return new Response(JSON.stringify({ success: true, intent: "send-telegram" }));
       } catch (sendError) {
         console.error('[Action] sendOrderToTelegram failed:', sendError);
         return new Response(JSON.stringify({ error: sendError.message || "Failed to send message" }), { status: 500 });

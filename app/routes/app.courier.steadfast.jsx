@@ -230,11 +230,15 @@ export async function action({ request }) {
         });
         console.log(`[Steadfast send] Shipment record created`);
 
-        console.log(`[Steadfast send] Removing hold if any`);
-        await prisma.courierOrderHold.deleteMany({
-            where: { orderName, courierName: "steadfast" },
+        console.log(`[Steadfast send] Adding hold after successful send`);
+        await prisma.courierOrderHold.upsert({
+          where: {
+            orderName_courierName: { orderName, courierName: "steadfast" },
+          },
+          update: {},
+          create: { orderName, courierName: "steadfast" },
         });
-        console.log(`[Steadfast send] Hold removed`);
+        console.log(`[Steadfast send] Hold added`);
 
         console.log(`[Steadfast send] Returning success`);
         return new Response(
