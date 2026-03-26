@@ -6,7 +6,14 @@ import prisma from "../db.server";
 // ---------- Loader ----------
 export const loader = async ({ request }) => {
   try {
+    const url = new URL(request.url);
+    console.log("🔹 loader /app/order-reports hit:", {
+      pathname: url.pathname,
+      search: url.search,
+    });
+
     const { session } = await authenticate.admin(request);
+    console.log("🔹 loader got session:", { shop: session?.shop });
     const orders = await prisma.order.findMany({
       where: { shop: session.shop },
       orderBy: { orderTime: "desc" },
@@ -37,7 +44,14 @@ export const loader = async ({ request }) => {
 // ---------- Action ----------
 export const action = async ({ request }) => {
   try {
+    const url = new URL(request.url);
+    console.log("🔹 action /app/order-reports hit:", {
+      pathname: url.pathname,
+      search: url.search,
+    });
+
     const { session, admin } = await authenticate.admin(request);
+    console.log("🔹 action got session:", { shop: session?.shop });
     const contentType = request.headers.get("content-type") || "";
 
     let intent, orderName, formData;
