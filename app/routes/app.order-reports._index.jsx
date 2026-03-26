@@ -268,11 +268,14 @@ export default function OrderReports() {
     setMessages({ ...messages, [orderName]: value });
   };
 
+  const [lastSentOrder, setLastSentOrder] = useState(null);
+
   const handleSend = (orderName, message) => {
     if (!message.trim()) {
       alert("Please enter a message before sending.");
       return;
     }
+    setLastSentOrder(orderName); // store which order we're sending
     fetcher.submit(
       { intent: "send-telegram", orderName, message },
       { method: "post", encType: "application/json", action: "/app/order-reports?index" }
@@ -280,13 +283,17 @@ export default function OrderReports() {
   };
 
   useEffect(() => {
-    if (fetcher.data?.success && fetcher.data?.intent === "send-telegram") {
+    if (fetcher.state === "idle" && fetcher.data?.success && fetcher.data?.intent === "send-telegram") {
       alert("✅ Message sent to Telegram!");
-      setMessages(prev => ({ ...prev, [orderName]: "" })); // but you need the orderName here – you may store it in a separate state
+      if (lastSentOrder) {
+        setMessages(prev => ({ ...prev, [lastSentOrder]: "" }));
+      }
+      setLastSentOrder(null);
     } else if (fetcher.data?.error && fetcher.data?.intent === "send-telegram") {
       alert(`❌ Failed to send: ${fetcher.data.error}`);
+      setLastSentOrder(null);
     }
-  }, [fetcher.data]);
+  }, [fetcher.state, fetcher.data, lastSentOrder]);
 
   const handleHold = (orderName, currentlyHeld) => {
     const intent = currentlyHeld ? "unhold" : "hold";
