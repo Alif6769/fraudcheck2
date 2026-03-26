@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher, useLocation } from "react-router";
+import { useLoaderData, useFetcher, useLocation, useRevalidator } from "react-router";
 import { useState, useEffect } from "react";
 import { authenticate, syncOrders, syncSheetForToday, clearSheetForShop } from "../shopify.server";
 import prisma from "../db.server";
@@ -262,46 +262,31 @@ export default function OrderReports() {
 
   const isSubmitting = fetcher.state === "submitting";
   const currentIntent = fetcher.submission?.formData?.get("intent") || null;
+  const revalidator = useRevalidator();
 
   const handleMessageChange = (orderName, value) => {
     setMessages({ ...messages, [orderName]: value });
   };
 
-  const handleSend = async (orderName, message) => {
+  const handleSend = (orderName, message) => {
     if (!message.trim()) {
       alert("Please enter a message before sending.");
       return;
     }
-    try {
-      const res = await fetch("/app/order-reports?index", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intent: "send-telegram", orderName, message }),
-      });
-      console.log("Response status:", res.status);
-      const contentType = res.headers.get("content-type");
-      console.log("Content-Type:", contentType);
-      const text = await res.text();
-      console.log("Raw response:", text);
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("JSON parse error:", e);
-        data = { error: "Invalid JSON response" };
-      }
-      console.log("Parsed data:", data);
-      if (data.success) {
-        alert("✅ Message sent to Telegram!");
-        setMessages(prev => ({ ...prev, [orderName]: "" }));
-      } else {
-        alert("❌ Failed to send: " + (data.error || "Unknown error"));
-      }
-    } catch (err) {
-      console.error("Fetch error:", err);
-      alert("Error: " + err.message);
-    }
+    fetcher.submit(
+      { intent: "send-telegram", orderName, message },
+      { method: "post", encType: "application/json", action: "/app/order-reports?index" }
+    );
   };
+
+  useEffect(() => {
+    if (fetcher.data?.success && fetcher.data?.intent === "send-telegram") {
+      alert("✅ Message sent to Telegram!");
+      setMessages(prev => ({ ...prev, [orderName]: "" })); // but you need the orderName here – you may store it in a separate state
+    } else if (fetcher.data?.error && fetcher.data?.intent === "send-telegram") {
+      alert(`❌ Failed to send: ${fetcher.data.error}`);
+    }
+  }, [fetcher.data]);
 
   const handleHold = (orderName, currentlyHeld) => {
     const intent = currentlyHeld ? "unhold" : "hold";
@@ -314,7 +299,7 @@ export default function OrderReports() {
   // Reload on hold change
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.success) {
-      window.location.reload();
+      revalidator.revalidate(); // instead of window.location.reload()
     }
   }, [fetcher.state, fetcher.data]);
 
