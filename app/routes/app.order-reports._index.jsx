@@ -96,28 +96,33 @@ export const action = async ({ request }) => {
 
     if (intent === "send-telegram") {
       if (!body) {
+        console.error('[Action] send-telegram: no body');
         return new Response(JSON.stringify({ error: "Invalid request format" }), { status: 400 });
       }
       const { orderName, message } = body;
+      console.log(`[Action] send-telegram for order ${orderName}`);
+
       if (!orderName || !message) {
+        console.error('[Action] Missing orderName or message');
         return new Response(JSON.stringify({ error: "Missing orderName or message" }), { status: 400 });
       }
 
-      // Fetch the full order from the database
-      const order = await prisma.order.findUnique({
-        where: { orderName },
-      });
+      const order = await prisma.order.findUnique({ where: { orderName } });
       if (!order) {
+        console.error(`[Action] Order not found: ${orderName}`);
         return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
       }
+      console.log('[Action] Order found');
 
-      // Send to Telegram using the stored credentials
       const { sendOrderToTelegram } = await import("../services/telegrambot.service");
       try {
+        console.log('[Action] Calling sendOrderToTelegram');
         await sendOrderToTelegram(session.shop, order, message);
+        console.log('[Action] sendOrderToTelegram succeeded');
+        console.log('[Action] Returning success JSON');
         return new Response(JSON.stringify({ success: true }));
       } catch (sendError) {
-        console.error("Telegram send error:", sendError);
+        console.error('[Action] sendOrderToTelegram failed:', sendError);
         return new Response(JSON.stringify({ error: sendError.message || "Failed to send message" }), { status: 500 });
       }
     }
