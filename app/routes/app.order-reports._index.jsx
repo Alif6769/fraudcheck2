@@ -273,15 +273,27 @@ export default function OrderReports() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent: "send-telegram", orderName, message }),
       });
-      const data = await res.json();
+      console.log("Response status:", res.status);
+      const contentType = res.headers.get("content-type");
+      console.log("Content-Type:", contentType);
+      const text = await res.text();
+      console.log("Raw response:", text);
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("JSON parse error:", e);
+        data = { error: "Invalid JSON response" };
+      }
+      console.log("Parsed data:", data);
       if (data.success) {
         alert("✅ Message sent to Telegram!");
-        // Optionally clear the message for that order
         setMessages(prev => ({ ...prev, [orderName]: "" }));
       } else {
         alert("❌ Failed to send: " + (data.error || "Unknown error"));
       }
     } catch (err) {
+      console.error("Fetch error:", err);
       alert("Error: " + err.message);
     }
   };
