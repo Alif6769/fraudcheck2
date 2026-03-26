@@ -6,19 +6,11 @@ import prisma from "../db.server";
 // ---------- Loader ----------
 export const loader = async ({ request }) => {
   try {
-    const url = new URL(request.url);
-    console.log("🔹 loader /app/order-reports hit:", {
-      pathname: url.pathname,
-      search: url.search,
-    });
-
     const { session } = await authenticate.admin(request);
-    console.log("🔹 loader got session:", { shop: session?.shop });
     const orders = await prisma.order.findMany({
       where: { shop: session.shop },
       orderBy: { orderTime: "desc" },
     });
-    // Fetch holds for all orders (any courier)
     const holds = await prisma.courierOrderHold.findMany({
       where: { orderName: { in: orders.map(o => o.orderName) } },
     });
@@ -44,32 +36,23 @@ export const loader = async ({ request }) => {
 // ---------- Action ----------
 export const action = async ({ request }) => {
   try {
-    const url = new URL(request.url);
-    console.log("🔹 action /app/order-reports hit:", {
-      pathname: url.pathname,
-      search: url.search,
-    });
-
     const { session, admin } = await authenticate.admin(request);
-    console.log("🔹 action got session:", { shop: session?.shop });
     const contentType = request.headers.get("content-type") || "";
 
     let intent, orderName, formData;
     let body = null;
 
     if (contentType.includes("application/json")) {
-      // Handle JSON (hold/unhold)
       body = await request.json();
       intent = body.intent;
       orderName = body.orderName;
     } else {
-      // Handle form data (sync-orders, sync-sheet, clear-sheet)
       formData = await request.formData();
       intent = formData.get("intent");
       orderName = formData.get("orderName");
     }
 
-    // Process hold/unhold
+    // Handle hold/unhold
     if (intent === "hold" || intent === "unhold") {
       if (!orderName) {
         return new Response(JSON.stringify({ error: "Missing orderName" }), { status: 400 });
@@ -85,14 +68,14 @@ export const action = async ({ request }) => {
             })
           )
         );
-        return new Response(JSON.stringify({ success: true, held: true }));
+        return new Response(JSON.stringify({ success: true, held: true, intent }));
       } else if (intent === "unhold") {
         await prisma.courierOrderHold.deleteMany({ where: { orderName } });
-        return new Response(JSON.stringify({ success: true, held: false }));
+        return new Response(JSON.stringify({ success: true, held: false, intent }));
       }
     }
 
-    // Existing sync actions (use formData from above)
+    // Sync sheet actions
     if (intent === "sync-sheet") {
       await syncSheetForToday(session.shop);
       return new Response(
@@ -108,36 +91,28 @@ export const action = async ({ request }) => {
       );
     }
 
+    // Send Telegram
     if (intent === "send-telegram") {
       if (!body) {
-        console.error('[Action] send-telegram: no body');
         return new Response(JSON.stringify({ error: "Invalid request format" }), { status: 400 });
       }
       const { orderName, message } = body;
-      console.log(`[Action] send-telegram for order ${orderName}`);
-
       if (!orderName || !message) {
-        console.error('[Action] Missing orderName or message');
         return new Response(JSON.stringify({ error: "Missing orderName or message" }), { status: 400 });
       }
 
       const order = await prisma.order.findUnique({ where: { orderName } });
       if (!order) {
-        console.error(`[Action] Order not found: ${orderName}`);
         return new Response(JSON.stringify({ error: "Order not found" }), { status: 404 });
       }
-      console.log('[Action] Order found');
 
       const { sendOrderToTelegram } = await import("../services/telegrambot.service");
       try {
-        console.log('[Action] Calling sendOrderToTelegram');
         await sendOrderToTelegram(session.shop, order, message);
-        console.log('[Action] sendOrderToTelegram succeeded');
-        console.log('[Action] Returning success JSON');
-        return new Response(JSON.stringify({ success: true, intent: "send-telegram" }));
+        return new Response(JSON.stringify({ success: true, intent }));
       } catch (sendError) {
-        console.error('[Action] sendOrderToTelegram failed:', sendError);
-        return new Response(JSON.stringify({ error: sendError.message || "Failed to send message" }), { status: 500 });
+        console.error("Telegram send error:", sendError);
+        return new Response(JSON.stringify({ error: sendError.message || "Failed to send message", intent }), { status: 500 });
       }
     }
 
@@ -167,7 +142,7 @@ export const action = async ({ request }) => {
   }
 };
 
-// ---------- Helper Functions (copied from OrdersDashboard) ----------
+// ---------- Helper Functions ----------
 function formatDate(date) {
   if (!date) return "-";
   return new Date(date).toLocaleString();
@@ -179,7 +154,6 @@ function formatCustomerName(first, last) {
 
 function getDhakaStatus(shippingAddressStr) {
   if (!shippingAddressStr) return "-";
-
   let fullAddress = "";
   try {
     const address = JSON.parse(shippingAddressStr);
@@ -195,17 +169,13 @@ function getDhakaStatus(shippingAddressStr) {
   } catch (e) {
     fullAddress = shippingAddressStr;
   }
-
   return fullAddress.toLowerCase().includes("dhaka") ? "Inside Dhaka" : "Outside Dhaka";
 }
 
-// ================== HELPER: Parse FraudSpy Report ==================
 function parseFraudSpyReport(report) {
   if (!report) return { ratio: null, totalOrders: null, hasFraudReports: false };
-
   const ratioMatch = report.match(/(?:Success ratio|Success Rate):\s*(\d+(?:\.\d+)?)%/i);
   const ratio = ratioMatch ? parseFloat(ratioMatch[1]) : null;
-
   let totalOrders = null;
   const totalMatch = report.match(/Total:\s*(\d+)/i);
   if (totalMatch) {
@@ -219,20 +189,16 @@ function parseFraudSpyReport(report) {
       totalOrders = parseInt(deliveredMatch[1], 10);
     }
   }
-
   const hasFraudReports = report.includes("Fraud reports:") && !report.includes("No fraud reports.");
-
   return { ratio, totalOrders, hasFraudReports };
 }
 
-// ================== HELPER: Parse Steadfast Report ==================
 function parseSteadfastReport(report) {
   if (!report) return null;
   const text = report.toLowerCase();
   return text.includes("fraud reports:") && !text.includes("no fraud reports.");
 }
 
-// ================== MAIN RISK INDICATOR ==================
 function getRiskIndicator(fraudReport, steadfastReport, shippingAddress) {
   if (!fraudReport) return "";
   const parsed = parseFraudSpyReport(fraudReport);
@@ -267,47 +233,33 @@ const tdStyle = {
 export default function OrderReports() {
   const { orders, shop, settings } = useLoaderData();
   const fetcher = useFetcher();
-  const location = useLocation(); // ✅ get location object
+  const location = useLocation();
+  const revalidator = useRevalidator();
   const [messages, setMessages] = useState({});
   const [fetchLimit, setFetchLimit] = useState(settings.fetchLimit ?? 100);
   const [reportLimit, setReportLimit] = useState(settings.reportLimit ?? 10);
   const [fraudspyEnabled, setFraudspyEnabled] = useState(settings.fraudspyEnabled ?? false);
   const [steadfastEnabled, setSteadfastEnabled] = useState(settings.steadfastEnabled ?? true);
+  const [lastSentOrder, setLastSentOrder] = useState(null);
 
   const isSubmitting = fetcher.state === "submitting";
   const currentIntent = fetcher.submission?.formData?.get("intent") || null;
-  const revalidator = useRevalidator();
 
   const handleMessageChange = (orderName, value) => {
     setMessages({ ...messages, [orderName]: value });
   };
-
-  const [lastSentOrder, setLastSentOrder] = useState(null);
 
   const handleSend = (orderName, message) => {
     if (!message.trim()) {
       alert("Please enter a message before sending.");
       return;
     }
-    setLastSentOrder(orderName); // store which order we're sending
+    setLastSentOrder(orderName);
     fetcher.submit(
       { intent: "send-telegram", orderName, message },
       { method: "post", encType: "application/json", action: "/app/order-reports?index" }
     );
   };
-
-  useEffect(() => {
-    if (fetcher.state === "idle" && fetcher.data?.success && fetcher.data?.intent === "send-telegram") {
-      alert("✅ Message sent to Telegram!");
-      if (lastSentOrder) {
-        setMessages(prev => ({ ...prev, [lastSentOrder]: "" }));
-      }
-      setLastSentOrder(null);
-    } else if (fetcher.data?.error && fetcher.data?.intent === "send-telegram") {
-      alert(`❌ Failed to send: ${fetcher.data.error}`);
-      setLastSentOrder(null);
-    }
-  }, [fetcher.state, fetcher.data, lastSentOrder]);
 
   const handleHold = (orderName, currentlyHeld) => {
     const intent = currentlyHeld ? "unhold" : "hold";
@@ -317,12 +269,30 @@ export default function OrderReports() {
     );
   };
 
-  // Reload on hold change
+  // Reload after hold/unhold
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.success) {
-      revalidator.revalidate(); // instead of window.location.reload()
+      const { intent } = fetcher.data;
+      if (intent === "hold" || intent === "unhold") {
+        revalidator.revalidate();
+      }
     }
-  }, [fetcher.state, fetcher.data]);
+  }, [fetcher.state, fetcher.data, revalidator]);
+
+  // Handle Telegram send response
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.intent === "send-telegram") {
+      if (fetcher.data.success) {
+        alert("✅ Message sent to Telegram!");
+        if (lastSentOrder) {
+          setMessages(prev => ({ ...prev, [lastSentOrder]: "" }));
+        }
+      } else {
+        alert(`❌ Failed to send: ${fetcher.data.error || "Unknown error"}`);
+      }
+      setLastSentOrder(null);
+    }
+  }, [fetcher.state, fetcher.data, lastSentOrder]);
 
   const isSetupPage = location.pathname === "/app/order-reports/setup";
 
@@ -408,7 +378,7 @@ export default function OrderReports() {
         </fetcher.Form>
 
         {/* Feedback messages */}
-        {fetcher.data?.success && (
+        {fetcher.data?.success && fetcher.data.intent !== "send-telegram" && (
           <div style={{ marginBottom: "10px", color: "green", fontWeight: "500" }}>
             ✅ {fetcher.data.synced ? `${fetcher.data.synced} orders synced` : fetcher.data.message}
           </div>
@@ -425,14 +395,7 @@ export default function OrderReports() {
           <s-paragraph>No orders found.</s-paragraph>
         ) : (
           <div style={{ overflow: "auto", maxHeight: "80vh", marginTop: "10px", width: "100%" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "14px",
-                tableLayout: "fixed",
-              }}
-            >
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "14px", tableLayout: "fixed" }}>
               <thead>
                 <tr>
                   <th style={{ ...thStyle, width: "200px" }}>Message</th>
@@ -453,41 +416,38 @@ export default function OrderReports() {
               </thead>
               <tbody>
                 {orders.map((order) => (
-                    <tr key={order.id}>
-                    {/* Message & Send column */}
+                  <tr key={order.id}>
                     <td style={tdStyle}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            <textarea
-                            value={messages[order.orderName] || ""}
-                            onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
-                            style={{
-                                width: "100%",
-                                padding: "8px",
-                                resize: "vertical",
-                                minHeight: "60px",
-                                maxHeight: "120px",
-                                overflow: "auto",
-                                fontFamily: "inherit",
-                                fontSize: "inherit",
-                                border: "1px solid #ccc",
-                                borderRadius: "4px",
-                            }}
-                            placeholder="Enter message (long text supported)"
-                            />
-                            <button onClick={() => handleSend(order.orderName, messages[order.orderName] || "")}>Send</button>
-                        </div>
-                        </td>
-
-                    {/* Hold column */}
-                    <td style={tdStyle}>
-                        <button onClick={() => handleHold(order.orderName, order.isHeld)}>
-                        {order.isHeld ? "Unhold" : "Hold"}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        <textarea
+                          value={messages[order.orderName] || ""}
+                          onChange={(e) => handleMessageChange(order.orderName, e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: "8px",
+                            resize: "vertical",
+                            minHeight: "60px",
+                            maxHeight: "120px",
+                            overflow: "auto",
+                            fontFamily: "inherit",
+                            fontSize: "inherit",
+                            border: "1px solid #ccc",
+                            borderRadius: "4px",
+                          }}
+                          placeholder="Enter message (long text supported)"
+                        />
+                        <button onClick={() => handleSend(order.orderName, messages[order.orderName] || "")}>
+                          Send
                         </button>
+                      </div>
                     </td>
-
-                    {/* Remaining columns */}
+                    <td style={tdStyle}>
+                      <button onClick={() => handleHold(order.orderName, order.isHeld)}>
+                        {order.isHeld ? "Unhold" : "Hold"}
+                      </button>
+                    </td>
                     <td style={{ ...tdStyle, textAlign: "center", fontSize: "20px" }}>
-                        {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
+                      {getRiskIndicator(order.fraudReport, order.steadFastReport, order.shippingAddress)}
                     </td>
                     <td style={tdStyle}>{order.orderName || "-"}</td>
                     <td style={tdStyle}>{formatDate(order.orderTime)}</td>
@@ -498,33 +458,33 @@ export default function OrderReports() {
                       name2: {order.realName2 || "-"}
                     </td>
                     <td style={tdStyle}>
-                        {order.fraudReport ? (
+                      {order.fraudReport ? (
                         <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
-                            {order.fraudReport}
+                          {order.fraudReport}
                         </div>
-                        ) : "-"}
+                      ) : "-"}
                     </td>
                     <td style={tdStyle}>
-                        {order.steadFastReport ? (
+                      {order.steadFastReport ? (
                         <div style={{ maxWidth: "100%", maxHeight: "150px", overflow: "auto", whiteSpace: "pre-wrap", background: "#f5f5f5", padding: "4px", fontSize: "11px", border: "1px solid #ccc", borderRadius: "4px" }}>
-                            {order.steadFastReport}
+                          {order.steadFastReport}
                         </div>
-                        ) : "-"}
+                      ) : "-"}
                     </td>
                     <td style={tdStyle}>{order.shippingPhone || "-"}</td>
                     <td style={tdStyle}>{getDhakaStatus(order.shippingAddress)}</td>
                     <td style={tdStyle}>{order.totalPrice || "0"}</td>
                     <td style={tdStyle}>{order.shippingFee || "0"}</td>
                     <td style={tdStyle}>
-                        {Array.isArray(order.products) && order.products.length > 0 ? (
+                      {Array.isArray(order.products) && order.products.length > 0 ? (
                         order.products.map((product, idx) => (
-                            <div key={idx}>{product.title || "Product"} × {product.quantity || 1}</div>
+                          <div key={idx}>{product.title || "Product"} × {product.quantity || 1}</div>
                         ))
-                        ) : "-"}
+                      ) : "-"}
                     </td>
-                    </tr>
+                  </tr>
                 ))}
-                </tbody>
+              </tbody>
             </table>
           </div>
         )}
