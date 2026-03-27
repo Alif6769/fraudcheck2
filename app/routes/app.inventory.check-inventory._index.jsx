@@ -173,6 +173,7 @@ export default function CheckInventory() {
     const tzOffset = new Date().getTimezoneOffset();
     formData.set("tzOffset", tzOffset);
     fetcher.submit(formData, { method: "post" });
+    console.log("Submitting with intent:", formData.get("intent"));
   };
 
   const handleDeleteHistory = () => {
@@ -333,6 +334,7 @@ export default function CheckInventory() {
               <s-button
                 variant="primary"
                 loading={isSubmitting && fetcher.submission?.formData?.get("intent") === "process-orders"}
+                disabled={isSubmitting && fetcher.submission?.formData?.get("intent") === "process-orders"}
                 onClick={handleProcessAll}
               >
                 Process orders

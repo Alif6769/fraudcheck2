@@ -152,6 +152,7 @@ export async function action({ request }) {
     console.log('🟢 getYesterdayUTCRange – endUTC:', endUTC.toISOString());
     // await processFulfilledOrdersWithRange(startUTC, endUTC, shop);
     await syncFulfilledOrdersForRange(session, admin, startUTC, endUTC)
+    await processFulfilledOrdersWithRange(startUTC, endUTC, session.shop)
 
     // Step 2: Sync unfulfilled orders
     await syncUnfulfilled(shop, session, admin);
