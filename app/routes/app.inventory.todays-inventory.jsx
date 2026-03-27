@@ -8,6 +8,7 @@ import {
   syncCancelled,
   syncFulfilled,
   syncFulfilledOrdersForRange,
+  processFulfilledOrdersWithRange
 } from "../services/inventory.server";
 
 // Helper: Convert a local date (YYYY-MM-DD) + time + offset to UTC Date
