@@ -6,21 +6,24 @@ import prisma from "../db.server";
 // ---------- Loader ----------
 export const loader = async ({ request }) => {
   try {
-    const url = new URL(request.url);
-    console.log("🔹 loader /app/order-reports hit:", {
-      pathname: url.pathname,
-      search: url.search,
-    });
-
     const { session } = await authenticate.admin(request);
     console.log("🔹 loader got session:", { shop: session?.shop });
 
+    // Calculate cutoff date (10 days ago, UTC)
+    const cutoffDate = new Date();
+    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 10);
+    // Set time to beginning of that day to include all orders from that day onward
+    cutoffDate.setUTCHours(0, 0, 0, 0);
+
     const orders = await prisma.order.findMany({
-      where: { shop: session.shop },
+      where: {
+        shop: session.shop,
+        orderTime: { gte: cutoffDate },
+      },
       orderBy: { orderTime: "desc" },
     });
 
-    // Fetch holds for all orders (any courier)
+    // Fetch holds for these orders
     const holds = await prisma.courierOrderHold.findMany({
       where: { orderName: { in: orders.map((o) => o.orderName) } },
     });
@@ -49,10 +52,10 @@ export const loader = async ({ request }) => {
 export const action = async ({ request }) => {
   try {
     const url = new URL(request.url);
-    console.log("🔹 action /app/order-reports hit:", {
-      pathname: url.pathname,
-      search: url.search,
-    });
+    // console.log("🔹 action /app/order-reports hit:", {
+    //   pathname: url.pathname,
+    //   search: url.search,
+    // });
 
     const { session, admin } = await authenticate.admin(request);
     console.log("🔹 action got session:", { shop: session?.shop });
