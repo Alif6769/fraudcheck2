@@ -167,6 +167,7 @@ export default function CheckInventory() {
 
   const handleProcessAll = () => {
     const formData = new FormData();
+    formData.set("intent", "process-orders");          // 👈 add this line
     formData.set("from", `${fromDate}T${fromTime || "00:00"}`);
     formData.set("to", `${toDate}T${toTime || "23:59"}`);
     const tzOffset = new Date().getTimezoneOffset();

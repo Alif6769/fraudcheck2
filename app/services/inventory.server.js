@@ -1,6 +1,11 @@
 // app/services/inventory.server.js
 import prisma from "../db.server";
 
+function extractOrderNumber(orderName) {
+  const match = orderName.match(/\d+/);
+  return match ? match[0] : null;
+}
+
 // ---------- Helper: Decompose order line items to raw product quantities ----------
 async function decomposeOrder(order, tx = prisma) {
   const quantities = new Map();
