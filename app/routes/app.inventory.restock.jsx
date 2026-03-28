@@ -3,18 +3,26 @@ import { useState, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
-// ---------- Loader ----------
+// ---------- Helper: convert local datetime + offset to UTC Date ----------
+function parseLocalToUTC(dateTimeStr, offsetMinutes) {
+  const [datePart, timePart] = dateTimeStr.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  utcDate.setMinutes(utcDate.getMinutes() + offsetMinutes);
+  return utcDate;
+}
+
+// ---------- Loader (unchanged) ----------
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
   const shopDomain = session.shop;
 
-  // Fetch all raw products
   const products = await prisma.product.findMany({
     where: { rawProductFlag: true },
     orderBy: { productName: "asc" },
   });
 
-  // For each product, get all transactions and separate restock transactions
   const productsWithDetails = await Promise.all(
     products.map(async (product) => {
       const transactions = await prisma.productTransaction.findMany({
@@ -22,7 +30,6 @@ export async function loader({ request }) {
         orderBy: { timestamp: "asc" },
       });
 
-      // List of restock transactions (for dropdown)
       const restocks = transactions
         .filter(t => t.type === "RESTOCK")
         .map(t => ({
@@ -31,7 +38,6 @@ export async function loader({ request }) {
           quantity: t.quantity,
         }));
 
-      // Compute current stock based on transactions after first restock
       const firstRestock = transactions.find(t => t.type === "RESTOCK");
       let currentStock = 0;
       if (firstRestock) {
@@ -67,11 +73,10 @@ export async function loader({ request }) {
 // ---------- Action ----------
 export async function action({ request }) {
   const { session } = await authenticate.admin(request);
-  const shopDomain = session.shop; // not used but ensures auth
   const formData = await request.json();
-  const { intent, productId, quantity, timestamp, restockId } = formData;
+  const { intent, productId, quantity, timestamp, tzOffset, restockId } = formData;
 
-  // Handle deletion of a single restock transaction
+  // Handle deletion of a single restock
   if (intent === "delete-restock") {
     if (!restockId) {
       return new Response(
@@ -80,7 +85,6 @@ export async function action({ request }) {
       );
     }
     try {
-      // Fetch the transaction to get its productId and quantity
       const transaction = await prisma.productTransaction.findUnique({
         where: { id: restockId },
       });
@@ -91,10 +95,8 @@ export async function action({ request }) {
         );
       }
 
-      // Delete the transaction
       await prisma.$transaction([
         prisma.productTransaction.delete({ where: { id: restockId } }),
-        // Update product quantity (decrement by the restock quantity)
         prisma.product.update({
           where: { productId: transaction.productId },
           data: { quantity: { decrement: transaction.quantity } },
@@ -123,7 +125,6 @@ export async function action({ request }) {
       );
     }
     try {
-      // Get all restock transactions for this product
       const restocks = await prisma.productTransaction.findMany({
         where: { productId, type: "RESTOCK" },
       });
@@ -133,9 +134,6 @@ export async function action({ request }) {
         prisma.productTransaction.deleteMany({
           where: { productId, type: "RESTOCK" },
         }),
-        // Reset product quantity to its base value? Actually we need to subtract the total restock quantity.
-        // If the product quantity was maintained as a denormalized field, we should adjust it.
-        // Assuming product.quantity includes all restocks, we subtract them.
         prisma.product.update({
           where: { productId },
           data: { quantity: { decrement: totalRestockQty } },
@@ -171,8 +169,11 @@ export async function action({ request }) {
     );
   }
 
-  // Convert custom timestamp if provided
-  const customTimestamp = timestamp ? new Date(timestamp) : undefined;
+  // Convert custom timestamp from local to UTC if provided
+  let customTimestamp = undefined;
+  if (timestamp && tzOffset !== undefined) {
+    customTimestamp = parseLocalToUTC(timestamp, tzOffset);
+  }
 
   try {
     const result = await prisma.$transaction(async (tx) => {
@@ -184,7 +185,7 @@ export async function action({ request }) {
           productId,
           type: "RESTOCK",
           quantity: restockQty,
-          timestamp: customTimestamp,
+          timestamp: customTimestamp, // if undefined, Prisma uses now()
         },
       });
 
@@ -217,7 +218,7 @@ export default function Restock() {
   const [search, setSearch] = useState("");
   const [quantities, setQuantities] = useState({});
   const [restockTimestamps, setRestockTimestamps] = useState({});
-  const [selectedRestock, setSelectedRestock] = useState({}); // { productId: restockId }
+  const [selectedRestock, setSelectedRestock] = useState({});
 
   const filteredProducts = products.filter(p =>
     p.productName.toLowerCase().includes(search.toLowerCase())
@@ -240,10 +241,12 @@ export default function Restock() {
       return;
     }
     const customTime = restockTimestamps[productId];
-    fetcher.submit(
-      { productId, quantity: qty, timestamp: customTime || undefined },
-      { method: "post", encType: "application/json" }
-    );
+    const payload = { productId, quantity: qty };
+    if (customTime) {
+      payload.timestamp = customTime;
+      payload.tzOffset = new Date().getTimezoneOffset(); // browser's offset in minutes
+    }
+    fetcher.submit(payload, { method: "post", encType: "application/json" });
   };
 
   const handleDeleteRestock = (productId, restockId) => {
@@ -267,10 +270,6 @@ export default function Restock() {
 
   const handleClearAllRestocks = () => {
     if (window.confirm("Delete ALL restocks for ALL products? This action is irreversible.")) {
-      // We'll call delete-all-restocks for each product, but that might be many requests.
-      // Instead, we can send a single intent to delete all restocks for the shop.
-      // For simplicity, we'll loop through products and call each product's delete-all.
-      // In production, you'd want a server-side endpoint that deletes all restocks for the shop in one transaction.
       products.forEach(product => {
         fetcher.submit(
           { intent: "delete-all-restocks", productId: product.productId },
@@ -280,7 +279,6 @@ export default function Restock() {
     }
   };
 
-  // Revalidate after any successful action
   useEffect(() => {
     if (fetcher.state === "idle" && fetcher.data?.success) {
       revalidator.revalidate();
@@ -293,7 +291,6 @@ export default function Restock() {
         <s-stack gap="base">
           <s-text>Shop: {shopDomain}</s-text>
 
-          {/* Global clear button */}
           <s-stack direction="inline" gap="small" align="center">
             <s-button
               variant="secondary"
@@ -305,7 +302,6 @@ export default function Restock() {
             </s-button>
           </s-stack>
 
-          {/* Search and Process button */}
           <s-stack direction="inline" gap="small" align="center">
             <input
               type="text"
@@ -319,7 +315,6 @@ export default function Restock() {
             </s-button>
           </s-stack>
 
-          {/* Products table */}
           <s-box background="base" border="base" borderRadius="base" padding="base">
             <s-heading>Raw Products</s-heading>
             <s-table variant="auto">
@@ -327,7 +322,7 @@ export default function Restock() {
                 <s-table-header>Product Name</s-table-header>
                 <s-table-header>Current Stock</s-table-header>
                 <s-table-header>Restock Quantity</s-table-header>
-                <s-table-header>Restock Date/Time</s-table-header>
+                <s-table-header>Restock Date/Time (local)</s-table-header>
                 <s-table-header>Restock History</s-table-header>
                 <s-table-header>Actions</s-table-header>
               </s-table-header-row>
@@ -417,7 +412,6 @@ export default function Restock() {
             </s-table>
           </s-box>
 
-          {/* Error display */}
           {fetcher.data?.error && (
             <s-box background="critical" padding="base" borderRadius="base">
               <s-text color="critical">Error: {fetcher.data.error}</s-text>
