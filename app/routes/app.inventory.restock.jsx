@@ -1,4 +1,4 @@
-import { useLoaderData, useFetcher } from "react-router";
+import { useLoaderData, useFetcher, useRevalidator } from "react-router";
 import { useState } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -125,6 +125,7 @@ export default function Restock() {
   const fetcher = useFetcher();
   const [search, setSearch] = useState("");
   const [quantities, setQuantities] = useState({});
+  const revalidator = useRevalidator();
 
   const filteredProducts = products.filter(p =>
     p.productName.toLowerCase().includes(search.toLowerCase())
@@ -152,9 +153,11 @@ export default function Restock() {
   // Optional: reload after successful restock to update stock display
   // We could listen to fetcher.data and then refetch loader data, but simplest is to reload the page.
   // For better UX, we could update the product list locally. For now, we'll reload.
-  if (fetcher.state === "idle" && fetcher.data?.success) {
-    window.location.reload();
-  }
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.success) {
+      revalidator.revalidate();
+    }
+  }, [fetcher.state, fetcher.data, revalidator]);
 
   return (
     <s-page heading="Restock Inventory" inlineSize="large">
