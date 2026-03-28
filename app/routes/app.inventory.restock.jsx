@@ -1,5 +1,5 @@
 import { useLoaderData, useFetcher, useRevalidator } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
