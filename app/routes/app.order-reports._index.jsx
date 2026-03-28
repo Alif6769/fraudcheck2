@@ -11,7 +11,7 @@ export const loader = async ({ request }) => {
 
     // Calculate cutoff date (10 days ago, UTC)
     const cutoffDate = new Date();
-    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 10);
+    cutoffDate.setUTCDate(cutoffDate.getUTCDate() - 5);
     // Set time to beginning of that day to include all orders from that day onward
     cutoffDate.setUTCHours(0, 0, 0, 0);
 
